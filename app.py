@@ -81,14 +81,23 @@ with st.sidebar:
     
     min_block_size = st.number_input("Minimum Matching Block Size (words)", min_value=3, max_value=50, value=10, help="Sets the minimum word count for a text block to be considered a match in the in-depth view.")
 
+    MAX_FILE_SIZE_MB = 4
+    MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+
     if st.button("Analyze Documents", type="primary", use_container_width=True):
         if uploaded_files and len(uploaded_files) >= 2:
-            with st.spinner("Analyzing... Please wait."):
-                doc_data = []
-                for i, file in enumerate(uploaded_files):
-                    text = extract_text(file)
-                    if text:
-                        doc_data.append({"id": f"Doc #{i+1}", "filename": file.name, "text": text})
+            oversized = [f.name for f in uploaded_files if f.size > MAX_FILE_SIZE_BYTES]
+            if oversized:
+                for name in oversized:
+                    st.error(f"❌ '{name}' exceeds the {MAX_FILE_SIZE_MB} MB file size limit and cannot be processed.")
+                st.session_state.results = None
+            else:
+                with st.spinner("Analyzing... Please wait."):
+                    doc_data = []
+                    for i, file in enumerate(uploaded_files):
+                        text = extract_text(file)
+                        if text:
+                            doc_data.append({"id": f"Doc #{i+1}", "filename": file.name, "text": text})
                 
                 if len(doc_data) >= 2:
                     doc_texts = [item['text'] for item in doc_data]
