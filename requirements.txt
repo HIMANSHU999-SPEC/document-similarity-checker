@@ -30,7 +30,7 @@ pillow==11.3.0
 plotly==6.2.0
 protobuf==6.31.1
 pyarrow==21.0.0
-pycparser==3.12
+pycparser==2.23
 pydeck==0.9.1
 PyMuPDF==1.26.3
 python-dateutil==2.9.0.post0

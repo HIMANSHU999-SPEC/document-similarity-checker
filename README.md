@@ -38,7 +38,7 @@ Upload two or more PDF or Word documents and the tool will:
 
 ## Stack
 
-Python 3.11 to 3.13 · Streamlit · scikit-learn · PyMuPDF · python-docx · pandas · Plotly · openpyxl
+Python 3.10 to 3.13 · Streamlit · scikit-learn · PyMuPDF · python-docx · pandas · Plotly · openpyxl
 
 ## Running it
 
