@@ -81,7 +81,7 @@ with st.sidebar:
     
     min_block_size = st.number_input("Minimum Matching Block Size (words)", min_value=3, max_value=50, value=10, help="Sets the minimum word count for a text block to be considered a match in the in-depth view.")
 
-    MAX_FILE_SIZE_MB = 4
+    MAX_FILE_SIZE_MB = 20
     MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
     if st.button("Analyze Documents", type="primary", use_container_width=True):
