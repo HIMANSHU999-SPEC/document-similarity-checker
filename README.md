@@ -95,7 +95,7 @@ For named staff only. After **Analyze Documents**, **🔒 Special actions** (und
 3. Staff can compare each copied passage with its rewrite, edit the full text, and re-run the test.
 4. **Download fixed CVs (ZIP)**: `CVs/` holds Word files named as the originals, with no author or notes in them. `Reports (staff only)/` holds the change report (before and after, questions for the applicant) and the original check report.
 
-Set it up in `secrets.toml` under `[special]` (see `secrets.toml.example`): the named staff emails and a SHA-256 hash of the code, never the code itself. Five wrong codes in an hour lock that person out for the hour. Unlocks, wrong codes and fixes are logged in `special_actions.log` next to the learned phrases file (staff only). The manual route, Claude's advice plus the student rewriting, is unchanged.
+Set it up in `secrets.toml` under `[special]` (see `secrets.toml.example`): a SHA-256 hash of the code (never the code itself) and, optionally, `allowed_emails`. Without its own list, Special actions uses the sign-in allow-list in `[access]`. Five wrong codes in an hour lock that person out for the hour. Unlocks, wrong codes and fixes are logged in `special_actions.log` next to the learned phrases file (staff only). The manual route, Claude's advice plus the student rewriting, is unchanged.
 
 ## Saving CVs to SharePoint
 

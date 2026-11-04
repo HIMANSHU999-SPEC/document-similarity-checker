@@ -5,8 +5,12 @@ MAX_ATTEMPTS = 5
 
 
 def settings(secrets) -> dict:
+    """[special] settings. Without its own allowed_emails, the sign-in allow-list ([access]) is used."""
     try:
-        return dict(secrets.get("special") or {})
+        config = dict(secrets.get("special") or {})
+        if "allowed_emails" not in config:
+            config["allowed_emails"] = list((secrets.get("access") or {}).get("allowed_emails", []))
+        return config
     except Exception:
         return {}
 

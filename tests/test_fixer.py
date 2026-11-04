@@ -187,3 +187,14 @@ def test_short_lines_keep_their_break_but_wrapped_lines_are_joined():
     pieces = [text[a:b] for a, b in spans]
     assert pieces[0] == "Sales Assistant, Corner Shop"
     assert pieces[1].startswith("Built a stock") and pieces[1].endswith("ordering mistakes")
+
+
+def test_special_actions_default_to_the_sign_in_allow_list():
+    from cvchecker.special import settings
+    staff = [f"person{i}@laat.ac.uk" for i in range(8)]
+    config = settings({"special": {"code_sha256": "abc"}, "access": {"allowed_emails": staff}})
+    assert config["allowed_emails"] == staff and can_use("PERSON7@laat.ac.uk", config)
+    own = settings({"special": {"code_sha256": "abc", "allowed_emails": ["one@laat.ac.uk"]},
+                    "access": {"allowed_emails": staff}})
+    assert not can_use("person1@laat.ac.uk", own)
+    assert not can_use("person1@laat.ac.uk", settings({"access": {"allowed_emails": staff}}))
