@@ -11,7 +11,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from cvchecker import transcript_ui
+from cvchecker import special_ui, transcript_ui
 from cvchecker.ai import (
     OVERALL_LABEL, VERDICT_LABEL, AIError, Review, Usage, make_client, review_cv, review_many, summarise_check,
 )
@@ -24,6 +24,7 @@ from cvchecker.prepare import builtin_phrases, load_phrases
 from cvchecker.sharepoint import from_secrets as sharepoint_from_secrets
 from cvchecker.report import fix_table_excel, pairs_table, sections_text, to_excel, to_pdf
 from cvchecker.similarity import analyse
+from cvchecker.special import settings as special_settings
 from cvchecker.triage import AMBER, GREEN, RED, copying_groups, summarise
 from cvchecker.ui import hero, inject_css, pill, quote, steps
 
@@ -57,10 +58,12 @@ def run_analysis(uploaded_files, template_files, extra_phrases, thresholds, min_
     if len(docs) < 2:
         return {"error": "Fewer than two readable documents.", "problems": problems, "duplicates": duplicates}
 
-    analysis = analyse([d.text for d in docs], min_words, template_texts,
-                       load_phrases(extra=extra_phrases, learned=learned))
+    phrases = load_phrases(extra=extra_phrases, learned=learned)
+    analysis = analyse([d.text for d in docs], min_words, template_texts, phrases)
     return {
         "names": [d.name for d in docs],
+        "texts": [d.text for d in docs],
+        "settings": {"min_words": min_words, "template_texts": template_texts, "phrases": phrases},
         "ids": [f"Doc #{i + 1}" for i in range(len(docs))],
         "analysis": analysis,
         "summaries": summarise(analysis, thresholds),
@@ -139,6 +142,7 @@ user = require_login()
 client = claude_client()
 store = phrase_store()
 sharepoint = sharepoint_client()
+special = special_settings(st.secrets)
 email = user[1] if user else "local user"
 
 for key, default in (("results", None), ("ai_reviews", {}), ("ai_summary", None), ("ai_usage", Usage()),
@@ -356,6 +360,7 @@ def check_page():
                 st.session_state.results = None
             else:
                 st.session_state.ai_reviews, st.session_state.ai_summary = {}, None
+                st.session_state.fixes = None
                 st.session_state.check_cost = None
                 with st.spinner("Analyzing..."):
                     st.session_state.results = run_analysis(
@@ -364,6 +369,7 @@ def check_page():
                         [p["phrase"] for p in phrases.learned],
                     )
                 st.session_state.review_pending = "error" not in st.session_state.results
+        special_ui.sidebar_button(special, email if user else "", store.path.parent)
 
     hero(
         "Document Similarity Checker",
@@ -457,6 +463,12 @@ def check_page():
         detail_panel(rows[selected[0]], names, ids, analysis, summaries, reviews)
     else:
         st.caption("Select a row to see the copied text and the full feedback.")
+
+    special_ui.fix_section(
+        client, results, rows, reviews, email, store.path.parent,
+        lambda: to_pdf(names, ids, analysis, summaries, thresholds, results["problems"], results["duplicates"],
+                       groups=groups, run_by=email if user else None),
+    )
 
     details_section(names, ids, analysis, summaries, groups, thresholds, reviews, results)
 

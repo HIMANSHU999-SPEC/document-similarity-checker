@@ -86,6 +86,17 @@ The **Transcript to CV** page (top of the app) turns one student's part of a Tea
 5. The name check compares the name you entered with the name the student gives in the recording. A mismatch blocks the download unless you give a reason, which is saved in the Word file's notes.
 6. The draft is checked for originality against the last CV check and other CVs made in the same session, then downloaded as `<Name> CV.docx`. Upload the LAAT template with a `{{CV}}` paragraph to have the CV placed inside it.
 
+## Special actions: fix copied sections
+
+For named staff only. After **Analyze Documents**, **🔒 Special actions** (under the Analyze button) asks for an access code. Once unlocked, a panel lists the CVs with issues (all ticked by default):
+
+1. **Fix selected CVs with Claude** rewrites only each CV's copied passages, keeping the applicant's facts. Everything else, including headings, contact details and layout lines, stays as it was. Contact details are never sent to Claude.
+2. The whole batch is re-checked with the fixed CVs swapped in, including fixed CVs against each other. Anything still matching gets one more pass, then shows "Still matches: fix by hand".
+3. Staff can compare each copied passage with its rewrite, edit the full text, and re-run the test.
+4. **Download fixed CVs (ZIP)**: `CVs/` holds Word files named as the originals, with no author or notes in them. `Reports (staff only)/` holds the change report (before and after, questions for the applicant) and the original check report.
+
+Set it up in `secrets.toml` under `[special]` (see `secrets.toml.example`): the named staff emails and a SHA-256 hash of the code, never the code itself. Five wrong codes in an hour lock that person out for the hour. Unlocks, wrong codes and fixes are logged in `special_actions.log` next to the learned phrases file (staff only). The manual route, Claude's advice plus the student rewriting, is unchanged.
+
 ## Saving CVs to SharePoint
 
 On the **Transcript to CV** page, step 5 saves the finished CV to `CVs / <intake> / <student name> / <Name> CV.docx` on the SharePoint site in `[sharepoint]` (see `secrets.toml.example`). Existing student folders with the same name are offered first; folders that only look alike are listed for staff to choose, and the app never guesses. Saving again replaces the file, and SharePoint keeps the old one in its version history. The same name check as the download applies.
