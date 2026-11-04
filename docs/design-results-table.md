@@ -1,6 +1,6 @@
 # Design: simple "what to change" results table and learned common phrases
 
-Status: agreed with Himanshu Chadha on 4 November 2026. Not yet built.
+Status: agreed with Himanshu Chadha on 4 November 2026. Built in the commit after `eb8e005`.
 Based on: `app.py` at commit `3a6f338` ("Add Transcript to CV page"), branch `claude/check-pdf-size-limit-LA5lQ`.
 Scope: the **Check CVs** page only. The **Transcript to CV** page is unchanged except where noted in Part 2.
 

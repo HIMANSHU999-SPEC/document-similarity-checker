@@ -63,9 +63,15 @@ class Prepared:
         return " ".join("".join(parts).split())
 
 
-def load_phrases(path=DEFAULT_PHRASES_FILE, extra: str = "") -> list[list[str]]:
+def builtin_phrases(path=DEFAULT_PHRASES_FILE) -> list[str]:
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    return [line.strip() for line in lines if line.strip() and not line.strip().startswith("#")]
+
+
+def load_phrases(path=DEFAULT_PHRASES_FILE, extra: str = "", learned=()) -> list[list[str]]:
     lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
     lines += extra.splitlines()
+    lines += list(learned)
     phrases = []
     for line in lines:
         line = line.strip()

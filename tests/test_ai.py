@@ -35,6 +35,8 @@ class FakeClient:
 ANSWER = {
     "overall": "rewrite_needed",
     "staff_note": "Shared statement.",
+    "one_line": "Experience is copied: rewrite it using the stock-tracking work.",
+    "common_phrases": [],
     "matches": [{"id": 1, "verdict": "copied", "reason": "Personal experience copied word for word."}],
     "sections": [{
         "section": "Experience",
@@ -148,3 +150,12 @@ def test_batch_summary_sends_no_cv_text():
     sent = client.calls[0]["messages"][0]["content"]
     assert "cloud migration" not in sent and "Aisha" not in sent
     assert data["priorities"] == ["Check Doc #1"]
+
+
+def test_review_returns_one_line_and_common_phrases_and_requires_them():
+    analysis, summaries = _setup()
+    answer = dict(ANSWER, common_phrases=["references available on request"])
+    review = ai.review_cv(FakeClient([answer]), summaries[0], analysis)
+    assert review.one_line.startswith("Experience is copied")
+    assert review.common_phrases == ["references available on request"]
+    assert {"one_line", "common_phrases"} <= set(ai.REVIEW_SCHEMA["required"])

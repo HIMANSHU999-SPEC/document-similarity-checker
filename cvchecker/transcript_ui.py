@@ -5,17 +5,18 @@ from cvchecker import transcript as tr
 from cvchecker.ai import AIError
 from cvchecker.cvdraft import build_docx, cv_text, draft_cv
 from cvchecker.names import MATCH, MISMATCH, NOT_SAID, PARTIAL, check_names
+from cvchecker.prepare import load_phrases
 from cvchecker.similarity import analyse
 from cvchecker.ui import hero, pill, quote
 
 NAME_PILL = {MATCH: "green", PARTIAL: "amber", NOT_SAID: "amber", MISMATCH: "red"}
 
 
-def originality(text, others, min_words=10):
+def originality(text, others, min_words=10, learned=()):
     """Share of the draft found word for word in any other CV, with the passages."""
     if not others:
         return None
-    result = analyse([text] + others, min_words)
+    result = analyse([text] + others, min_words, phrases=load_phrases(learned=learned))
     pairs = [p for p in result.pairs if p.a == 0]
     best = max(pairs, key=lambda p: p.copied_a_in_b) if pairs else None
     passages = [s.text_a for p in pairs for s in p.passages]
@@ -83,7 +84,7 @@ def _evidence(draft):
     return pd.DataFrame([r for r in rows if r[1]], columns=["Part", "In the CV", "What the student said"])
 
 
-def render(client, user):
+def render(client, user, learned=()):
     hero("Transcript to CV",
          "Turn a student's part of a Teams interview recording into a CV draft, with every line traced back "
          "to what they said.", user[0] if user else None)
@@ -184,7 +185,7 @@ def render(client, user):
     batch = [d.text for d in results["analysis"].docs] if results.get("analysis") else []
     earlier = [v["text"] for k, v in st.session_state.get("made_cvs", {}).items() if k != key]
     body = cv_text(draft)
-    found = originality(body, batch + earlier)
+    found = originality(body, batch + earlier, learned=learned)
     if found is None:
         st.caption("Run a CV check on the Check CVs page first to compare this draft against that batch.")
     else:

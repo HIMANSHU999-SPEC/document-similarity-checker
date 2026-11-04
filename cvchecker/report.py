@@ -97,3 +97,14 @@ def to_pdf(names, ids, analysis, summaries, thresholds, problems, duplicates, gr
         writer.end_page()
     writer.close()
     return buf.getvalue()
+
+
+def fix_table_excel(rows) -> bytes:
+    buf = io.BytesIO()
+    table = pd.DataFrame([{"Doc ID": r.doc_id, "CV": r.cv, "Status": r.status, "What to change": r.what} for r in rows])
+    with pd.ExcelWriter(buf, engine="openpyxl") as xl:
+        table.to_excel(xl, sheet_name="What to change", index=False)
+        sheet = xl.sheets["What to change"]
+        for column, width in zip("ABCD", (10, 30, 16, 90)):
+            sheet.column_dimensions[column].width = width
+    return buf.getvalue()

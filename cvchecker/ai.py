@@ -32,15 +32,19 @@ Rules:
 - Never mention, describe or guess at the other applicant.
 - UK English, plain words, short sentences.
 - overall: rewrite_needed when copied personal content is a meaningful part of the CV; small_fixes when it is minor; no_action when every passage is template_or_stock or coincidence (then sections is empty).
-- staff_note: one or two sentences for staff, for example when a passage is shared by several CVs."""
+- staff_note: one or two sentences for staff, for example when a passage is shared by several CVs.
+- one_line: one or two short sentences for a results table, at most 25 words, naming the affected sections and the action, addressed to staff about the student (for example "Profile and Experience bullets are copied: rewrite them in their own words, using their shop job."). Same rules as above: no replacement wording, no mention of the other applicant. For no_action it is exactly "Nothing to change."
+- common_phrases: up to 5 short generic CV phrases (3 to 15 words) taken word for word only from passages you judged template_or_stock, which any CV could contain (for example "references available on request" or a course title). Never include a person's name, an employer, school or college name, any number, or anything about this student's own experience. Empty when there is nothing generic."""
 
 REVIEW_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["overall", "staff_note", "matches", "sections"],
+    "required": ["overall", "staff_note", "one_line", "common_phrases", "matches", "sections"],
     "properties": {
         "overall": {"type": "string", "enum": list(OVERALL_LABEL)},
         "staff_note": {"type": "string"},
+        "one_line": {"type": "string"},
+        "common_phrases": {"type": "array", "items": {"type": "string"}},
         "matches": {
             "type": "array",
             "items": {
@@ -112,6 +116,8 @@ class Review:
     sections: list[dict]
     items: list[dict]
     usage: Usage = field(default_factory=Usage)
+    one_line: str = ""
+    common_phrases: list[str] = field(default_factory=list)
 
 
 def make_client(api_key: str):
@@ -184,7 +190,8 @@ def review_cv(client, summary, analysis) -> Review:
     }
     data, usage = ask(client, REVIEW_SYSTEM, payload, REVIEW_SCHEMA, effort="low")
     verdicts = {m["id"]: (m["verdict"], m["reason"]) for m in data["matches"]}
-    return Review(data["overall"], data["staff_note"], verdicts, data["sections"], items, usage)
+    return Review(data["overall"], data["staff_note"], verdicts, data["sections"], items, usage,
+                  one_line=data.get("one_line", ""), common_phrases=data.get("common_phrases", []))
 
 
 def review_many(client, summaries, analysis, workers=6, on_done=None):

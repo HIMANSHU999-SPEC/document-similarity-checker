@@ -63,6 +63,14 @@ When `.streamlit/secrets.toml` has an `[auth]` section, only signed-in Microsoft
 
 In Entra ID, the app needs a **Web** redirect URI of `https://<the app's address>/oauth2callback`, and turning on **Assignment required** (Enterprise applications > the app > Properties) limits sign-in to the users or group assigned to it.
 
+## Results table and learned phrases
+
+After **Analyze Documents**, Claude reviews every flagged CV automatically (if the API key is set) and the page shows one table: CV, status (🔴 Rewrite needed, 🟠 Small fixes, ✅ OK) and a one-line "what to change". Select a row for the copied passages, the editable feedback and the Word feedback sheet. Groups, pairs, the similarity matrix, the full Excel and PDF, and the staff-meeting summary are under **Details**. Without Claude, the table uses the matching results instead.
+
+Claude also suggests generic CV phrases it found in wording it judged standard. Each suggestion is checked first: it must be 3 to 15 words, come from a passage Claude judged template or stock wording, contain no numbers, email addresses or the student's name, and not already be known. Staff press **Add** (every later check ignores it) or **Ignore** (never suggested again). Learned phrases can be removed under **Common phrases** in the sidebar, and they're used by the Transcript to CV originality check too.
+
+Learned phrases are saved in `~/cvapp/data/learned_phrases.json` (on the server, `/home/ubuntu/cvapp/data/learned_phrases.json`), outside the git folder so `git pull` never touches it. Set `[phrases] path` in `secrets.toml` to use another location. The file holds only the phrases, who added or ignored them and when, never student data. **Back it up along with `secrets.toml`.**
+
 ## Claude review
 
 Add the API key to `.streamlit/secrets.toml` under `[anthropic]` (see `secrets.toml.example`). Without it the Claude buttons are hidden and everything else works as normal. Each CV review costs about $0.01 to $0.02; set a monthly spending cap in the Anthropic Console.
