@@ -13,6 +13,7 @@ import pandas as pd
 
 from cvchecker.ai import AIError, Review, Usage, ask
 from cvchecker.prepare import _heading, prepare
+from cvchecker.report import excel_safe
 from cvchecker.similarity import analyse
 from cvchecker.triage import RED, summarise
 
@@ -235,7 +236,7 @@ def fix_report(names, ids, fixes) -> bytes:
         "Passages rewritten": len(f.changes), "Questions for the applicant": "\n".join(f.questions),
     } for i, f in sorted(fixes.items())]
     buf = io.BytesIO()
-    pd.DataFrame(rows).to_excel(buf, index=False)
+    excel_safe(pd.DataFrame(rows)).to_excel(buf, index=False)
     return buf.getvalue()
 
 

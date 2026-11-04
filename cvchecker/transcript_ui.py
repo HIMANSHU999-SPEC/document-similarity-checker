@@ -265,8 +265,11 @@ def existing_cv_section(student):
         kind = NAME_PILL[MISMATCH if check.result == NOT_SAID else check.result]
         st.markdown(f"Name on the CV: **{on_cv}** {pill(check.result if check.result != NOT_SAID else 'No name found', kind)}",
                     unsafe_allow_html=True)
-        if check.result == MISMATCH:
-            st.warning("This CV seems to belong to someone else. Check you picked the right one.")
+        if check.result != MATCH:
+            st.warning("The name on this CV doesn't match the student. Using the wrong CV would put another "
+                       "person's details into this student's CV.")
+            if not st.checkbox(f"This is {student}'s CV, use it anyway", key=f"cv_confirm::{label}"):
+                return "", None, "new"
     return existing, index, label
 
 

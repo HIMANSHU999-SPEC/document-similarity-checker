@@ -132,3 +132,10 @@ def test_folder_choices_never_guess():
     assert exact == ["Aisha Khan", "Khan Aisha"]
     assert alike == ["Aisha Noor Khan"]
     assert folder_choices("Chen Li", folders) == ([], [])
+
+
+def test_network_failure_while_creating_a_folder_is_a_readable_error():
+    http = FakeHTTP(folders={"CVs"})
+    http.fail = {"/children": "network"}
+    with pytest.raises(sp.SharePointError, match="creating the folder"):
+        _sp(http).upload(b"x", "Aisha Khan CV.docx", "CVs", "2026-27 Intake", "Aisha Khan")

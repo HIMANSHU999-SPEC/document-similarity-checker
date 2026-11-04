@@ -6,6 +6,16 @@ import fitz
 import pandas as pd
 
 
+FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
+
+
+def excel_safe(df: pd.DataFrame) -> pd.DataFrame:
+    """Text that Excel would run as a formula (e.g. a file named =HYPERLINK(...)) is written as plain text."""
+    def cell(v):
+        return "'" + v if isinstance(v, str) and v.startswith(FORMULA_START) else v
+    return df.map(cell) if hasattr(df, "map") else df.applymap(cell)
+
+
 def sections_text(counter) -> str:
     return ", ".join(f"{name} ({words} words)" for name, words in counter.most_common())
 
@@ -40,18 +50,18 @@ def to_excel(names, ids, analysis, summaries, thresholds, problems, duplicates) 
     pairs = analysis.pairs
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as xl:
-        triage_table(names, ids, summaries).to_excel(xl, sheet_name="Triage", index=False)
-        pairs_table(names, pairs, thresholds).to_excel(xl, sheet_name="Pairs", index=False)
+        excel_safe(triage_table(names, ids, summaries)).to_excel(xl, sheet_name="Triage", index=False)
+        excel_safe(pairs_table(names, pairs, thresholds)).to_excel(xl, sheet_name="Pairs", index=False)
         passages = [{
             "Document A": names[p.a], "Section in A": s.section_a,
             "Document B": names[p.b], "Section in B": s.section_b,
             "Words": s.length, "Passage": s.text_a,
         } for p in pairs if p.flagged(thresholds) for s in p.passages]
-        pd.DataFrame(passages or [{"Passage": "None"}]).to_excel(xl, sheet_name="Passages", index=False)
+        excel_safe(pd.DataFrame(passages or [{"Passage": "None"}])).to_excel(xl, sheet_name="Passages", index=False)
         issues = [{"File": n, "Issue": msg} for n, msg in problems] + [
             {"File": " = ".join(group), "Issue": "Identical files"} for group in duplicates
         ]
-        pd.DataFrame(issues or [{"Issue": "None"}]).to_excel(xl, sheet_name="Issues", index=False)
+        excel_safe(pd.DataFrame(issues or [{"Issue": "None"}])).to_excel(xl, sheet_name="Issues", index=False)
     return buf.getvalue()
 
 
@@ -103,7 +113,7 @@ def fix_table_excel(rows) -> bytes:
     buf = io.BytesIO()
     table = pd.DataFrame([{"Doc ID": r.doc_id, "CV": r.cv, "Status": r.status, "What to change": r.what} for r in rows])
     with pd.ExcelWriter(buf, engine="openpyxl") as xl:
-        table.to_excel(xl, sheet_name="What to change", index=False)
+        excel_safe(table).to_excel(xl, sheet_name="What to change", index=False)
         sheet = xl.sheets["What to change"]
         for column, width in zip("ABCD", (10, 30, 16, 90)):
             sheet.column_dimensions[column].width = width

@@ -231,3 +231,23 @@ def test_new_cv_requests_still_use_the_original_prompt():
     draft_cv(client, "[0:01] STUDENT: hello")
     assert client.calls[0]["system"] != UPDATE_SYSTEM
     assert json.loads(client.calls[0]["messages"][0]["content"]) == {"transcript": "[0:01] STUDENT: hello"}
+
+
+def test_another_students_cv_is_not_used_without_confirmation():
+    from streamlit.testing.v1 import AppTest
+
+    def page():
+        import streamlit as st
+        from cvchecker.transcript_ui import existing_cv_section
+        st.session_state.results = {"names": ["Bilal Ahmed CV.pdf"], "texts": ["Bilal Ahmed\nProfile\nI fix laptops."]}
+        st.session_state.out = existing_cv_section("Aisha Khan")
+
+    at = AppTest.from_function(page).run()
+    at.radio[0].set_value("Use a CV from the last check").run()
+    at.selectbox[0].set_value("Bilal Ahmed CV.pdf").run()
+    assert not at.exception
+    assert at.session_state.out == ("", None, "new")
+    assert any("doesn't match the student" in w.value for w in at.warning)
+    at.checkbox[0].check().run()
+    text, index, _ = at.session_state.out
+    assert text.startswith("Bilal Ahmed") and index == 0

@@ -126,9 +126,12 @@ class SharePoint:
         for part in [p for part in parts for p in part.split("/") if p]:
             parent = f"/drives/{drive}/root" + (f":/{self._path(*done)}:" if done else "")
             body = {"name": part, "folder": {}, "@microsoft.graph.conflictBehavior": "fail"}
-            response = self.http.request("POST", f"{GRAPH}{parent}/children", timeout=60, json=body,
-                                         headers={"Authorization": f"Bearer {self.token()}"})
-            if response.status_code != 409:
+            try:
+                response = self.http.request("POST", f"{GRAPH}{parent}/children", timeout=60, json=body,
+                                             headers={"Authorization": f"Bearer {self.token()}"})
+            except requests.RequestException as e:
+                raise SharePointError(f"Couldn't reach Microsoft while creating the folder {part!r}: {e}") from e
+            if response.status_code != 409:  # 409: the folder already exists
                 self._check(response, f"creating the folder {part!r}")
             done.append(part)
 

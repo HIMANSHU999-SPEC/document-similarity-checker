@@ -36,3 +36,19 @@ def test_pdf_lists_cvs_to_review_and_escapes_names():
     assert "Copying groups" in text
     assert "scan.pdf" in text
     assert "staff@laat.ac.uk" in text
+
+
+def test_file_names_that_look_like_formulas_are_written_as_text():
+    import openpyxl
+    from cvchecker.report import excel_safe
+    evil = '=HYPERLINK("https://attacker.test","Open")'
+    buf = io.BytesIO()
+    excel_safe(pd.DataFrame([{"CV": evil, "Score": -0.5, "Note": "+44 7700", "Plain": "Aisha"}])).to_excel(buf, index=False)
+    row = list(openpyxl.load_workbook(io.BytesIO(buf.getvalue())).active.iter_rows(min_row=2, values_only=False))[0]
+    assert all(c.data_type != "f" for c in row)
+    assert row[0].value == "'" + evil and row[1].value == -0.5 and row[3].value == "Aisha"
+    names = [evil + ".pdf", "bilal.pdf"]
+    a = analyse([P1 + " " + P2, P2 + " " + P1], min_words=8)
+    data = to_excel(names, IDS, a, summarise(a, T), T, [], [])
+    for sheet in openpyxl.load_workbook(io.BytesIO(data)).worksheets:
+        assert not [c for r in sheet.iter_rows() for c in r if c.data_type == "f"]
