@@ -11,6 +11,10 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from cvchecker.ai import (
+    OVERALL_LABEL, OVERALL_ORDER, VERDICT_LABEL, AIError, Review, Usage, make_client, review_cv, review_many,
+    summarise_check,
+)
 from cvchecker.auth import require_login
 from cvchecker.extract import extract
 from cvchecker.feedback import feedback_docx, feedback_zip
@@ -61,11 +65,29 @@ def run_analysis(uploaded_files, template_files, extra_phrases, thresholds, min_
     }
 
 
+@st.cache_resource
+def claude_client():
+    try:
+        key = (st.secrets.get("anthropic") or {}).get("api_key", "")
+    except Exception:
+        key = ""
+    return make_client(key) if key and not key.startswith("sk-ant-...") else None
+
+
+def review_rank(s, reviews):
+    review = reviews.get(s.index)
+    if isinstance(review, Review):
+        return {0: 0, 1: 1, 2: 3}[OVERALL_ORDER[review.overall]], s.original
+    return (4 if s.status == GREEN else 2), s.original
+
+
 st.set_page_config(layout="wide", page_title="Document Similarity Checker | LAAT")
 user = require_login()
+client = claude_client()
 
-if "results" not in st.session_state:
-    st.session_state.results = None
+for key, default in (("results", None), ("ai_reviews", {}), ("ai_summary", None), ("ai_usage", Usage())):
+    if key not in st.session_state:
+        st.session_state[key] = default
 
 with st.sidebar:
     st.image("https://laat.ac.uk/assets/img/laat-logo.jpg", width=200)
@@ -108,6 +130,7 @@ with st.sidebar:
             st.error(f"❌ {len(uploaded_files)} files uploaded. The limit is {MAX_FILES} per check.")
             st.session_state.results = None
         else:
+            st.session_state.ai_reviews, st.session_state.ai_summary = {}, None
             with st.spinner("Analyzing... Please wait."):
                 st.session_state.results = run_analysis(
                     uploaded_files, template_files, extra_phrases,
@@ -159,9 +182,69 @@ elif results:
         )
         st.code(g.text, language=None, wrap_lines=True)
 
+    reviews = st.session_state.ai_reviews
+    to_review = [s for s in summaries if s.status != GREEN]
+
+    st.subheader("🤖 Claude review")
+    if client is None:
+        st.caption("Add your Claude API key under [anthropic] in secrets.toml to turn on Claude reviews.")
+    elif to_review:
+        pending = [s for s in to_review if not isinstance(reviews.get(s.index), Review)]
+        if pending and st.button(
+            f"Ask Claude which of the {len(pending)} flagged CVs need changing "
+            f"(about ${0.015 * len(pending):.2f})", type="primary",
+        ):
+            bar = st.progress(0.0, text="Claude is reviewing the flagged CVs...")
+            done = review_many(
+                client, pending, analysis,
+                on_done=lambda n, total: bar.progress(n / total, text=f"Reviewed {n} of {total}"),
+            )
+            reviews.update(done)
+            for r in done.values():
+                if isinstance(r, Review):
+                    st.session_state.ai_usage += r.usage
+            bar.empty()
+        reviewed = [reviews[s.index] for s in to_review if isinstance(reviews.get(s.index), Review)]
+        failed = [s for s in to_review if isinstance(reviews.get(s.index), AIError)]
+        if reviewed:
+            tally = {label: sum(1 for r in reviewed if r.overall == key) for key, label in OVERALL_LABEL.items()}
+            st.markdown(
+                f"Claude reviewed **{len(reviewed)}** CVs: **{tally['Rewrite needed']}** need rewriting, "
+                f"**{tally['Small fixes']}** need small fixes, **{tally['No action']}** need no action "
+                "(the matches are template or stock wording). The triage list below is now in that order."
+            )
+        errors = defaultdict(list)
+        for s in failed:
+            errors[str(reviews[s.index])].append(ids[s.index])
+        for message, doc_ids in errors.items():
+            st.warning(f"Claude couldn't review {', '.join(doc_ids)}. {message}")
+        if reviewed and st.button("Summarise this check for a staff meeting"):
+            try:
+                data, usage = summarise_check(client, ids, summaries, groups, reviews)
+                st.session_state.ai_summary = data
+                st.session_state.ai_usage += usage
+            except AIError as e:
+                st.warning(str(e))
+        if st.session_state.ai_summary:
+            st.info(st.session_state.ai_summary["summary"] + "\n\n" + "\n".join(
+                f"{i}. {p}" for i, p in enumerate(st.session_state.ai_summary["priorities"], 1)
+            ))
+        if st.session_state.ai_usage.cost:
+            st.caption(f"Claude cost so far in this session: about ${st.session_state.ai_usage.cost:.2f}")
+    else:
+        st.caption("Nothing flagged, so there's nothing for Claude to review.")
+
+    summaries = sorted(summaries, key=lambda s: review_rank(s, reviews))
+    to_review = [s for s in summaries if s.status != GREEN]
+
     st.subheader("🗂️ Triage")
     table = triage_table(names, ids, summaries)
     table["Status"] = [f"{STATUS_ICON[s]} {s}" for s in table["Status"]]
+    if reviews:
+        table.insert(1, "Claude", [
+            OVERALL_LABEL[reviews[s.index].overall] if isinstance(reviews.get(s.index), Review) else ""
+            for s in summaries
+        ])
     st.dataframe(
         table, use_container_width=True, hide_index=True,
         column_config={"Original": st.column_config.ProgressColumn(
@@ -169,7 +252,6 @@ elif results:
         )},
     )
 
-    to_review = [s for s in summaries if s.status != GREEN]
     if to_review:
         st.subheader("🔬 Review a CV")
         options = [
@@ -179,21 +261,55 @@ elif results:
         choice = st.selectbox("Choose a CV:", options, key="cv_selector")
         s = to_review[options.index(choice)]
 
-        if s.sections:
-            st.markdown("**What to change:** " + sections_text(s.sections))
-        by_section = defaultdict(list)
-        for m in s.matches:
-            by_section[m.section].append(m)
-        for section, items in by_section.items():
-            st.markdown(f"#### {section}")
-            for m in items:
-                st.caption(
-                    f"{m.words} words · also in {ids[m.other]} ({names[m.other]}), {m.other_section}"
-                )
-                st.code(m.text, language=None, wrap_lines=True)
+        review = reviews.get(s.index)
+        if not isinstance(review, Review):
+            review = None
+            if client is not None and st.button("🤖 Ask Claude what to change in this CV"):
+                try:
+                    review = review_cv(client, s, analysis)
+                    reviews[s.index] = review
+                    st.session_state.ai_usage += review.usage
+                except AIError as e:
+                    st.warning(str(e))
+
+        if review:
+            st.markdown(f"**Claude: {OVERALL_LABEL[review.overall]}.** {review.staff_note}")
+        elif s.sections:
+            st.markdown("**Sections affected:** " + sections_text(s.sections))
+
+        verdict_by_start = {}
+        if review:
+            for item in review.items:
+                verdict_by_start[(item["section"], item["passage"])] = review.verdicts.get(item["id"])
+            if review.sections:
+                st.caption("Edit Claude's wording below if needed. The feedback sheet uses what's shown here.")
+            for n, sec in enumerate(review.sections):
+                st.markdown(f"#### {sec['section']}")
+                sec["problem"] = st.text_area(
+                    "What's wrong", sec["problem"], key=f"ai-{s.index}-{n}-problem", height=70)
+                sec["what_to_change"] = st.text_area(
+                    "What to change", sec["what_to_change"], key=f"ai-{s.index}-{n}-change", height=90)
+                questions = st.text_area(
+                    "Questions for the student (one per line)", "\n".join(sec["questions"]),
+                    key=f"ai-{s.index}-{n}-questions", height=90)
+                sec["questions"] = [q.strip() for q in questions.splitlines() if q.strip()]
+
+        with st.expander("Matching passages", expanded=review is None):
+            by_section = defaultdict(list)
+            for m in s.matches:
+                by_section[m.section].append(m)
+            for section, items in by_section.items():
+                st.markdown(f"##### {section}")
+                for m in items:
+                    verdict = verdict_by_start.get((m.section, m.text))
+                    note = f" · Claude: {VERDICT_LABEL[verdict[0]]}, {verdict[1]}" if verdict else ""
+                    st.caption(
+                        f"{m.words} words · also in {ids[m.other]} ({names[m.other]}), {m.other_section}{note}"
+                    )
+                    st.code(m.text, language=None, wrap_lines=True)
         st.download_button(
             "⬇️ Feedback sheet for this student (Word)",
-            feedback_docx(names[s.index], s),
+            feedback_docx(names[s.index], s, review),
             f"{names[s.index].rsplit('.', 1)[0]} - feedback.docx",
         )
 
@@ -222,7 +338,7 @@ elif results:
         "cv-similarity.pdf", use_container_width=True,
     )
     d3.download_button(
-        f"Feedback sheets ({len(to_review)} students, ZIP)", feedback_zip(names, summaries),
+        f"Feedback sheets ({len(to_review)} students, ZIP)", feedback_zip(names, summaries, reviews),
         "cv-feedback.zip", use_container_width=True, disabled=not to_review,
     )
 

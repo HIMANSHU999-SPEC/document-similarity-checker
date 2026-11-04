@@ -12,6 +12,8 @@ class Match:
     other_section: str
     text: str
     words: int
+    start: int = 0
+    other_text: str = ""
 
 
 @dataclass
@@ -42,8 +44,8 @@ def summarise(analysis, thresholds) -> list[CvSummary]:
         for s in p.passages:
             covered[p.a].update(range(s.a_start, s.a_start + s.length))
             covered[p.b].update(range(s.b_start, s.b_start + s.length))
-            matches[p.a].append(Match(p.b, s.section_a, s.section_b, s.text_a, s.length))
-            matches[p.b].append(Match(p.a, s.section_b, s.section_a, s.text_b, s.length))
+            matches[p.a].append(Match(p.b, s.section_a, s.section_b, s.text_a, s.length, s.a_start, s.text_b))
+            matches[p.b].append(Match(p.a, s.section_b, s.section_a, s.text_b, s.length, s.b_start, s.text_a))
 
     out = []
     for i, doc in enumerate(analysis.docs):

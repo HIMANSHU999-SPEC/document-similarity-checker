@@ -2,7 +2,7 @@
 
 A local tool for comparing a batch of documents against each other, scoring how similar each pair is, and showing the exact passages they share.
 
-Built for a higher-education provider to check student submissions, CVs and personal statements for overlap. It runs entirely on the machine it's launched from — **no document is ever uploaded to a third-party service**, which is the whole point when the files are someone's coursework or job application.
+Built for a higher-education provider to check student submissions, CVs and personal statements for overlap. All matching runs on the machine it's launched from, and **no document is ever uploaded to a third-party service**, which matters when the files are someone's coursework or job application. The optional Claude review sends only short matched passages, with contact details removed, and only when staff ask for it.
 
 Built by **Himanshu Chadha**.
 
@@ -21,6 +21,7 @@ Upload two or more PDF or Word documents and the tool will:
 - **Identify hotspots**, which surfaces the one document copied from repeatedly
 - **Plot a similarity matrix**, a heatmap of every document against every other
 - **Export a report** as Excel (every pair, every passage) or a PDF summary
+- **Ask Claude what to change** (optional). For each flagged CV, Claude decides whether each match is copied, template or stock wording, or coincidence, then writes what's wrong, what to change and questions for the student, per CV section, without writing replacement text. Staff can edit it before it goes into the feedback sheet. One button reviews every flagged CV and re-orders the triage list into rewrite needed, small fixes and no action
 
 ## Why it works this way
 
@@ -30,7 +31,7 @@ Upload two or more PDF or Word documents and the tool will:
 
 **Templates are not evidence.** Students who start from the same LAAT template share its headings and boilerplate. Passages found in at least half of a batch (and at least 3 documents), or in an uploaded template, are left out of both scores.
 
-**Nothing leaves the machine.** Every online plagiarism service requires uploading the documents. For student coursework and job applications that's a data protection question nobody wants to answer. Running locally removes the question entirely.
+**Matching never leaves the server.** Extracting, matching, scoring and triage all run locally. The optional Claude review is the one exception, and only runs when staff click it: Claude (Sonnet 5.5, via the Anthropic API) receives the matched passages of one CV with about 25 words either side. Emails, phone numbers, web links, postcodes and dates are removed first, and no file names or applicant names are added. The batch summary sends only counts and statuses, no CV text.
 
 **Case, accents, ligatures and punctuation are normalised** before matching, so formatting differences don't mask a match.
 
@@ -61,6 +62,10 @@ The 20 MB limit is set in `.streamlit/config.toml`. If the app sits behind nginx
 When `.streamlit/secrets.toml` has an `[auth]` section, only signed-in Microsoft users can use the app; without it the app runs open, for local use. Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` on the server, fill in the values from the Entra ID app registration, and run `chmod 600` on it. The real file is in `.gitignore`.
 
 In Entra ID, the app needs a **Web** redirect URI of `https://<the app's address>/oauth2callback`, and turning on **Assignment required** (Enterprise applications > the app > Properties) limits sign-in to the users or group assigned to it.
+
+## Claude review
+
+Add the API key to `.streamlit/secrets.toml` under `[anthropic]` (see `secrets.toml.example`). Without it the Claude buttons are hidden and everything else works as normal. Each CV review costs about $0.01 to $0.02; set a monthly spending cap in the Anthropic Console.
 
 ## Running the tests
 
