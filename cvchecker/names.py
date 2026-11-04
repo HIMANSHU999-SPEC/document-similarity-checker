@@ -39,3 +39,24 @@ def check_names(entered: str, said: str) -> NameCheck:
                                   f"the recording says “{said}”. Confirm before saving.")
     return NameCheck(MISMATCH, f"You entered “{entered}” but the recording says “{said}”. "
                                "Check the times and the name before saving.")
+
+
+FILE_NAME_NOISE = {"cv", "resume", "curriculum", "vitae", "final", "draft", "copy", "new", "updated", "version"}
+
+
+def matching_cvs(student: str, file_names, texts) -> list[int]:
+    """Indexes of CVs whose file name or first line names this student, exact matches only."""
+    wanted = sorted(name_parts(student))
+    if not wanted:
+        return []
+    found = []
+    for i, (name, text) in enumerate(zip(file_names, texts)):
+        stem = [w for w in name_parts(name.rsplit(".", 1)[0]) if w not in FILE_NAME_NOISE]
+        first_line = next((line for line in text.splitlines() if line.strip()), "")
+        if sorted(stem) == wanted or sorted(name_parts(first_line)) == wanted:
+            found.append(i)
+    return found
+
+
+def first_line(text: str) -> str:
+    return next((line.strip() for line in text.splitlines() if line.strip()), "")

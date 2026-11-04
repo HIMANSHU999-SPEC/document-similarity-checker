@@ -3,8 +3,9 @@ import streamlit as st
 
 from cvchecker import transcript as tr
 from cvchecker.ai import AIError
-from cvchecker.cvdraft import build_docx, cv_text, draft_cv
-from cvchecker.names import MATCH, MISMATCH, NOT_SAID, PARTIAL, check_names, name_parts
+from cvchecker.cvdraft import CV_MARKER, build_docx, cv_text, draft_cv
+from cvchecker.extract import extract
+from cvchecker.names import MATCH, MISMATCH, NOT_SAID, PARTIAL, check_names, first_line, matching_cvs, name_parts
 from cvchecker.sharepoint import SharePointError, current_intake, safe_name
 from cvchecker.prepare import load_phrases
 from cvchecker.similarity import analyse
@@ -82,7 +83,7 @@ def _evidence(draft):
     rows += [("Education", e["qualification"], e["evidence"]) for e in draft["education"]]
     rows += [("Achievement", a["text"], a["evidence"]) for a in draft["achievements"]]
     rows += [("Interest", i["text"], i["evidence"]) for i in draft["interests"]]
-    return pd.DataFrame([r for r in rows if r[1]], columns=["Part", "In the CV", "What the student said"])
+    return pd.DataFrame([r for r in rows if r[1]], columns=["Part", "In the CV", "Where it came from"])
 
 
 def render(client, user, learned=(), sharepoint=None):
@@ -150,14 +151,22 @@ def render(client, user, learned=(), sharepoint=None):
         st.caption("Emails and phone numbers are replaced before sending, and put back afterwards.")
         st.text(text[:6000] + ("\n…" if len(text) > 6000 else ""))
 
+    existing, source_index, source_label = existing_cv_section(student)
+
     template = st.file_uploader("LAAT CV template (optional, .docx). Put {{CV}} where the CV should go.",
                                 type=["docx"], key="cv_template")
 
-    key = f"draft::{upload.name}::{start}::{end}"
-    if st.button("📝 Create CV draft with Claude (about $0.04)", type="primary"):
-        with st.spinner("Claude is reading the transcript..."):
+    key = f"draft::{upload.name}::{start}::{end}::{source_label}"
+    action = "📝 Update the CV with Claude (about $0.05)" if existing else "📝 Create CV draft with Claude (about $0.04)"
+    if st.button(action, type="primary"):
+        with st.spinner("Claude is reading the transcript" + (" and the CV..." if existing else "...")):
             try:
-                data, usage = draft_cv(client, text)
+                if existing:
+                    combined, mapping = tr.redact(tr.labelled(part, set(interviewers)) + CV_MARKER + existing)
+                    sent_transcript, sent_cv = combined.split(CV_MARKER, 1)
+                    data, usage = draft_cv(client, sent_transcript, sent_cv)
+                else:
+                    data, usage = draft_cv(client, text)
                 st.session_state[key] = {"draft": tr.restore(data, mapping), "mapping": mapping}
                 st.session_state.ai_usage += usage
             except AIError as e:
@@ -171,6 +180,14 @@ def render(client, user, learned=(), sharepoint=None):
     check = check_names(student, draft["name_as_said"])
     st.markdown(f"**Name check** {pill(check.result, NAME_PILL[check.result])}  \n{check.message}",
                 unsafe_allow_html=True)
+    if draft.get("conflicts"):
+        with st.container(border=True):
+            st.markdown(f"**The CV and the interview disagree ({len(draft['conflicts'])})** "
+                        + pill("Staff to decide", "amber"), unsafe_allow_html=True)
+            st.caption("The draft keeps the CV's version. Edit it below if the interview is right.")
+            st.dataframe(pd.DataFrame([{"About": c["topic"], "CV says": c["cv_says"],
+                                        "Interview says": c["interview_says"]} for c in draft["conflicts"]]),
+                         hide_index=True, use_container_width=True)
     if draft["missing"]:
         with st.container(border=True):
             st.markdown("**Ask the student to complete the CV**")
@@ -183,7 +200,8 @@ def render(client, user, learned=(), sharepoint=None):
 
     st.markdown("#### 4. Originality and download")
     results = st.session_state.get("results") or {}
-    batch = [d.text for d in results["analysis"].docs] if results.get("analysis") else []
+    batch = [d.text for i, d in enumerate(results["analysis"].docs) if i != source_index] \
+        if results.get("analysis") else []
     earlier = [v["text"] for k, v in st.session_state.get("made_cvs", {}).items() if k != key]
     body = cv_text(draft)
     found = originality(body, batch + earlier, learned=learned)
@@ -211,6 +229,45 @@ def render(client, user, learned=(), sharepoint=None):
     if st.download_button(f"⬇️ Download {filename}", data, filename, type="primary", disabled=not allowed):
         st.session_state.setdefault("made_cvs", {})[key] = {"text": body, "name": student.strip()}
     save_section(sharepoint, student.strip(), filename, data, allowed, key, body)
+
+
+def existing_cv_section(student):
+    """Optional existing CV to update. Returns (text, index in the last check or None, label for caching)."""
+    st.markdown("#### Existing CV (optional)")
+    results = st.session_state.get("results") or {}
+    names, texts = results.get("names") or [], results.get("texts") or []
+    modes = ["Create a new CV"] + (["Use a CV from the last check"] if names else []) + ["Upload the student's CV"]
+    mode = st.radio("Start from", modes, horizontal=True, key="cv_source",
+                    help="Updating keeps everything accurate in the CV and adds what the student said.")
+    existing, index, label = "", None, "new"
+    if mode == "Use a CV from the last check":
+        found = matching_cvs(student, names, texts)
+        order = found + [i for i in range(len(names)) if i not in found]
+        labels = [names[i] + ("  (name matches)" if i in found else "") for i in order]
+        pick = st.selectbox("Student's CV", labels, index=0 if found else None, key="cv_pick",
+                            placeholder="Choose the student's CV")
+        if not found:
+            st.caption(f"No CV in the last check is named {student}. Pick the right one, or upload it.")
+        if pick is not None:
+            index = order[labels.index(pick)]
+            existing, label = texts[index], f"batch:{names[index]}"
+    elif mode == "Upload the student's CV":
+        uploaded = st.file_uploader("Student's current CV (PDF or Word)", type=["pdf", "docx"], key="cv_existing")
+        if uploaded:
+            item = extract(uploaded.name, uploaded.getvalue())
+            if not item.ok:
+                st.error(f"{uploaded.name} couldn't be used: {item.problem}.")
+            else:
+                existing, label = item.text, f"upload:{item.sha256[:12]}"
+    if existing:
+        on_cv = first_line(existing)
+        check = check_names(student, on_cv)
+        kind = NAME_PILL[MISMATCH if check.result == NOT_SAID else check.result]
+        st.markdown(f"Name on the CV: **{on_cv}** {pill(check.result if check.result != NOT_SAID else 'No name found', kind)}",
+                    unsafe_allow_html=True)
+        if check.result == MISMATCH:
+            st.warning("This CV seems to belong to someone else. Check you picked the right one.")
+    return existing, index, label
 
 
 def folder_choices(student, folders):

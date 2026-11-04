@@ -22,6 +22,23 @@ Rules:
 - name_as_said: the student's full name exactly as they say it when asked (for example "My name is Aisha Khan"). Empty if they never say it.
 - Emails and phone numbers appear as placeholders like [EMAIL_1] or [PHONE_1]. Copy a placeholder into email or phone if the student gives one; never guess real values.
 - missing: up to 6 short questions staff could ask the student to complete the CV (for example missing dates or results).
+- UK English and UK date style. Leave a field as an empty string or empty list when there is nothing for it.
+- conflicts: always an empty list for a new CV."""
+
+UPDATE_SYSTEM = """You update a student's existing CV using a Teams interview transcript, for a UK college (London Academy for Applied Technology).
+
+You get existing_cv (the student's current CV) and transcript. In the transcript, INTERVIEWER lines are questions: use them only to understand the answers. STUDENT lines and the existing CV are the only sources of facts.
+
+Rules:
+- Keep every accurate fact from the existing CV. Add what the student said in the interview that the CV is missing, and use the interview to make vague CV lines specific.
+- Never invent or assume a job, date, grade, skill or achievement.
+- Where the CV and the interview disagree (for example different dates, roles or results), keep the CV's version in the CV and add the disagreement to conflicts, quoting both. Never settle a conflict yourself.
+- Keep the student's own words and phrasing wherever they read well; tidy grammar only. Avoid stock CV phrases such as "team player", "hard-working", "excellent communication skills", "passionate about".
+- Profile in the first person, 3 to 4 short sentences. Experience bullet points are short, start with a verb, and describe what the student actually did.
+- Every item has evidence: a short verbatim quote starting "CV: " or "Interview: " (or both, separated by " | ") showing where it came from.
+- name_as_said: the student's full name exactly as they say it in the interview. Empty if they never say it.
+- email and phone: copy the CV's or the student's placeholders such as [EMAIL_1] or [PHONE_1]; never guess real values.
+- missing: up to 6 short questions staff could ask the student to complete the CV.
 - UK English and UK date style. Leave a field as an empty string or empty list when there is nothing for it."""
 
 _ITEM = {"type": "object", "additionalProperties": False, "required": ["text", "evidence"],
@@ -31,7 +48,7 @@ SCHEMA = {
     "type": "object",
     "additionalProperties": False,
     "required": ["name_as_said", "email", "phone", "profile", "skills", "experience", "education",
-                 "achievements", "interests", "missing"],
+                 "achievements", "interests", "missing", "conflicts"],
     "properties": {
         "name_as_said": {"type": "string"},
         "email": {"type": "string"},
@@ -54,13 +71,26 @@ SCHEMA = {
         "achievements": {"type": "array", "items": _ITEM},
         "interests": {"type": "array", "items": _ITEM},
         "missing": {"type": "array", "items": {"type": "string"}},
+        "conflicts": {"type": "array", "items": {
+            "type": "object", "additionalProperties": False, "required": ["topic", "cv_says", "interview_says"],
+            "properties": {"topic": {"type": "string"}, "cv_says": {"type": "string"},
+                           "interview_says": {"type": "string"}},
+        }},
     },
 }
 
+CV_MARKER = "\n\n=== EXISTING CV ===\n"
 
-def draft_cv(client, labelled_transcript: str):
-    payload = {"transcript": labelled_transcript}
-    return ask(client, SYSTEM, payload, SCHEMA, effort="medium")
+
+def draft_cv(client, labelled_transcript: str, existing_cv: str = ""):
+    """New CV from the transcript, or an update of existing_cv using it. Both inputs must already be redacted."""
+    if existing_cv.strip():
+        payload = {"existing_cv": existing_cv, "transcript": labelled_transcript}
+        data, usage = ask(client, UPDATE_SYSTEM, payload, SCHEMA, effort="medium")
+    else:
+        data, usage = ask(client, SYSTEM, {"transcript": labelled_transcript}, SCHEMA, effort="medium")
+    data.setdefault("conflicts", [])
+    return data, usage
 
 
 def cv_text(draft: dict) -> str:

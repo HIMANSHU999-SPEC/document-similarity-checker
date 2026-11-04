@@ -191,3 +191,43 @@ def test_blank_entries_added_by_staff_are_left_out_of_the_cv():
     text = _doc_text(build_docx("Aisha Khan", draft))
     assert "Education" not in text
     assert text.count("Sales Assistant") == 1
+
+
+from cvchecker.cvdraft import CV_MARKER, UPDATE_SYSTEM
+from cvchecker.names import matching_cvs
+
+EXISTING_CV = ("Aisha Khan\naisha.k@example.com | 07700 900123\nProfile\nI like IT.\nWork Experience\n"
+               "Sales Assistant, Corner Shop, 2023\nServed customers at the till.")
+
+
+def test_matching_cvs_finds_the_student_by_file_name_or_first_line():
+    names = ["Bilal Ahmed CV.pdf", "cv_final.docx", "Aisha Khan - CV (2).pdf"]
+    texts = ["Bilal Ahmed\n...", "Aisha Khan\nProfile", "Someone\n..."]
+    assert matching_cvs("Aisha Khan", names, texts) == [1, 2]
+    assert matching_cvs("Khan, Aisha", names, texts) == [1, 2]
+    assert matching_cvs("Chen Li", names, texts) == []
+
+
+def test_update_sends_cv_and_transcript_without_contact_details():
+    lines = tr.parse_text(VTT)
+    labelled = tr.labelled(tr.window(lines, 870, 1620), {"Ms Rivera"})
+    combined, mapping = tr.redact(labelled + CV_MARKER + EXISTING_CV)
+    sent_transcript, sent_cv = combined.split(CV_MARKER, 1)
+    client = FakeClient()
+    data, _ = draft_cv(client, sent_transcript, sent_cv)
+    call = client.calls[0]
+    assert call["system"] == UPDATE_SYSTEM
+    payload = json.loads(call["messages"][0]["content"])
+    assert set(payload) == {"existing_cv", "transcript"}
+    assert "Served customers at the till" in payload["existing_cv"] and "corner shop" in payload["transcript"]
+    sent = call["messages"][0]["content"]
+    assert "@" not in sent and "07700" not in sent
+    assert sent_cv.count("[EMAIL_1]") == 1 and sent_transcript.count("[EMAIL_1]") == 1
+    assert data["conflicts"] == []
+
+
+def test_new_cv_requests_still_use_the_original_prompt():
+    client = FakeClient()
+    draft_cv(client, "[0:01] STUDENT: hello")
+    assert client.calls[0]["system"] != UPDATE_SYSTEM
+    assert json.loads(client.calls[0]["messages"][0]["content"]) == {"transcript": "[0:01] STUDENT: hello"}
