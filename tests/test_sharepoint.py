@@ -139,3 +139,21 @@ def test_network_failure_while_creating_a_folder_is_a_readable_error():
     http.fail = {"/children": "network"}
     with pytest.raises(sp.SharePointError, match="creating the folder"):
         _sp(http).upload(b"x", "Aisha Khan CV.docx", "CVs", "2026-27 Intake", "Aisha Khan")
+
+
+def test_two_folders_with_the_students_name_need_a_choice():
+    from streamlit.testing.v1 import AppTest
+
+    def page():
+        from types import SimpleNamespace
+        from cvchecker.transcript_ui import save_section
+        fake = SimpleNamespace(site_url="https://x/sites/y", folder="CVs",
+                               list_folders=lambda *a: ["Aisha Khan", "Khan Aisha", "Bilal Ahmed"],
+                               check=lambda: "ok", upload=lambda *a: "https://x/file")
+        save_section(fake, "Aisha Khan", "Aisha Khan CV.docx", b"docx", True, "k", "body")
+
+    at = AppTest.from_function(page).run()
+    assert not at.exception
+    assert at.radio[0].value is None
+    assert any("More than one existing folder" in w.value for w in at.warning)
+    assert not any(b.label.startswith("☁️ Save") for b in at.button)

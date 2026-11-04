@@ -231,6 +231,11 @@ def render(client, user, learned=(), sharepoint=None):
     save_section(sharepoint, student.strip(), filename, data, allowed, key, body)
 
 
+def same_cv_in_batch(text, texts):
+    """Position of the same CV in the last check, so it isn't compared with itself."""
+    return next((i for i, t in enumerate(texts) if t == text), None)
+
+
 def existing_cv_section(student):
     """Optional existing CV to update. Returns (text, index in the last check or None, label for caching)."""
     st.markdown("#### Existing CV (optional)")
@@ -250,7 +255,7 @@ def existing_cv_section(student):
             st.caption(f"No CV in the last check is named {student}. Pick the right one, or upload it.")
         if pick is not None:
             index = order[labels.index(pick)]
-            existing, label = texts[index], f"batch:{names[index]}"
+            existing, label = texts[index], f"batch:{index}:{names[index]}"
     elif mode == "Upload the student's CV":
         uploaded = st.file_uploader("Student's current CV (PDF or Word)", type=["pdf", "docx"], key="cv_existing")
         if uploaded:
@@ -259,6 +264,7 @@ def existing_cv_section(student):
                 st.error(f"{uploaded.name} couldn't be used: {item.problem}.")
             else:
                 existing, label = item.text, f"upload:{item.sha256[:12]}"
+                index = same_cv_in_batch(item.text, texts)
     if existing:
         on_cv = first_line(existing)
         check = check_names(student, on_cv)
@@ -268,7 +274,8 @@ def existing_cv_section(student):
         if check.result != MATCH:
             st.warning("The name on this CV doesn't match the student. Using the wrong CV would put another "
                        "person's details into this student's CV.")
-            if not st.checkbox(f"This is {student}'s CV, use it anyway", key=f"cv_confirm::{label}"):
+            if not st.checkbox(f"This is {student}'s CV, use it anyway",
+                               key=f"cv_confirm::{label}::{' '.join(sorted(name_parts(student)))}"):
                 return "", None, "new"
     return existing, index, label
 
@@ -305,10 +312,10 @@ def save_section(sharepoint, student, filename, data, allowed, key, body):
     exact, alike = folder_choices(student, cache[intake])
     new_folder = safe_name(student)
     options = exact + alike + ([] if new_folder in exact else [f"New folder: {new_folder}"])
-    if alike:
-        st.warning("Some existing folders look like this student's name. Pick the right one.")
+    if alike or len(exact) > 1:
+        st.warning("More than one existing folder could be this student's. Pick the right one.")
     choice = st.radio(f"Save into {sharepoint.folder} / {intake} /", options, key=f"{key}-folder",
-                      index=0 if exact and not alike else None)
+                      index=0 if len(exact) == 1 and not alike else None)
     if choice is None:
         st.caption("Choose a folder to enable saving.")
         return
