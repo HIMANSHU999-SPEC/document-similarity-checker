@@ -21,6 +21,7 @@ from cvchecker.feedback import feedback_docx, feedback_zip
 from cvchecker.fix_table import fix_rows
 from cvchecker.phrases_store import PhraseStore, StoreError, phrase_key, validate_suggestions
 from cvchecker.prepare import builtin_phrases, load_phrases
+from cvchecker.sharepoint import from_secrets as sharepoint_from_secrets
 from cvchecker.report import fix_table_excel, pairs_table, sections_text, to_excel, to_pdf
 from cvchecker.similarity import analyse
 from cvchecker.triage import AMBER, GREEN, RED, copying_groups, summarise
@@ -79,6 +80,14 @@ def claude_client():
     return make_client(key) if key and not key.startswith("sk-ant-...") else None
 
 
+@st.cache_resource
+def sharepoint_client():
+    try:
+        return sharepoint_from_secrets(st.secrets)
+    except Exception:
+        return None
+
+
 def phrase_store():
     try:
         path = (st.secrets.get("phrases") or {}).get("path")
@@ -129,6 +138,7 @@ inject_css()
 user = require_login()
 client = claude_client()
 store = phrase_store()
+sharepoint = sharepoint_client()
 email = user[1] if user else "local user"
 
 for key, default in (("results", None), ("ai_reviews", {}), ("ai_summary", None), ("ai_usage", Usage()),
@@ -452,7 +462,7 @@ def check_page():
 
 pages = [
     st.Page(check_page, title="Check CVs", icon="🔍", default=True),
-    st.Page(lambda: transcript_ui.render(client, user, [p["phrase"] for p in store.load().learned]),
+    st.Page(lambda: transcript_ui.render(client, user, [p["phrase"] for p in store.load().learned], sharepoint),
             title="Transcript to CV", icon="📝", url_path="transcript"),
 ]
 st.navigation(pages, position="top").run()

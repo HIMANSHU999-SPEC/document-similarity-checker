@@ -86,6 +86,22 @@ The **Transcript to CV** page (top of the app) turns one student's part of a Tea
 5. The name check compares the name you entered with the name the student gives in the recording. A mismatch blocks the download unless you give a reason, which is saved in the Word file's notes.
 6. The draft is checked for originality against the last CV check and other CVs made in the same session, then downloaded as `<Name> CV.docx`. Upload the LAAT template with a `{{CV}}` paragraph to have the CV placed inside it.
 
+## Saving CVs to SharePoint
+
+On the **Transcript to CV** page, step 5 saves the finished CV to `CVs / <intake> / <student name> / <Name> CV.docx` on the SharePoint site in `[sharepoint]` (see `secrets.toml.example`). Existing student folders with the same name are offered first; folders that only look alike are listed for staff to choose, and the app never guesses. Saving again replaces the file, and SharePoint keeps the old one in its version history. The same name check as the download applies.
+
+It uses the same Entra ID app as sign-in, with its own app-only access to **that one site**. One-time setup by a Microsoft 365 admin:
+
+1. **Entra ID > App registrations > the CV Checker app > API permissions > Add a permission > Microsoft Graph > Application permissions > `Sites.Selected`**, then **Grant admin consent**.
+2. Give the app write access to the CV site only. With PnP PowerShell, signed in as a SharePoint admin:
+   ```powershell
+   Connect-PnPOnline -Url https://londonacademytec.sharepoint.com/sites/CVcheckeradmission -Interactive -ClientId <an admin PnP app id>
+   Grant-PnPAzureADAppSitePermission -AppId <CV Checker client_id> -DisplayName "CV Checker" `
+       -Site https://londonacademytec.sharepoint.com/sites/CVcheckeradmission -Permissions Write
+   ```
+   Or in Graph Explorer, as an admin: look up the site id with `GET https://graph.microsoft.com/v1.0/sites/londonacademytec.sharepoint.com:/sites/CVcheckeradmission`, then `POST https://graph.microsoft.com/v1.0/sites/<site id>/permissions` with `{"roles": ["write"], "grantedToIdentities": [{"application": {"id": "<CV Checker client_id>", "displayName": "CV Checker"}}]}`.
+3. Open **Transcript to CV**, expand **SharePoint connection** and press **Test SharePoint connection**. The `CVs` folder is created on the first save.
+
 ## Running the tests
 
 ```bash

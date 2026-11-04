@@ -4,7 +4,8 @@ import streamlit as st
 from cvchecker import transcript as tr
 from cvchecker.ai import AIError
 from cvchecker.cvdraft import build_docx, cv_text, draft_cv
-from cvchecker.names import MATCH, MISMATCH, NOT_SAID, PARTIAL, check_names
+from cvchecker.names import MATCH, MISMATCH, NOT_SAID, PARTIAL, check_names, name_parts
+from cvchecker.sharepoint import SharePointError, current_intake, safe_name
 from cvchecker.prepare import load_phrases
 from cvchecker.similarity import analyse
 from cvchecker.ui import hero, pill, quote
@@ -84,7 +85,7 @@ def _evidence(draft):
     return pd.DataFrame([r for r in rows if r[1]], columns=["Part", "In the CV", "What the student said"])
 
 
-def render(client, user, learned=()):
+def render(client, user, learned=(), sharepoint=None):
     hero("Transcript to CV",
          "Turn a student's part of a Teams interview recording into a CV draft, with every line traced back "
          "to what they said.", user[0] if user else None)
@@ -209,4 +210,62 @@ def render(client, user, learned=()):
     data = build_docx(student.strip(), draft, template.getvalue() if template else None, note)
     if st.download_button(f"⬇️ Download {filename}", data, filename, type="primary", disabled=not allowed):
         st.session_state.setdefault("made_cvs", {})[key] = {"text": body, "name": student.strip()}
-    st.caption("Saving straight to the student's SharePoint folder comes in the SharePoint phase.")
+    save_section(sharepoint, student.strip(), filename, data, allowed, key, body)
+
+
+def folder_choices(student, folders):
+    """Existing folders for this student: exact name matches first, then folders that look alike."""
+    wanted = sorted(name_parts(student))
+    exact = [f for f in folders if sorted(name_parts(f)) == wanted]
+    alike = [f for f in folders if f not in exact and len(set(name_parts(f)) & set(wanted)) >= min(2, len(wanted))]
+    return exact, alike
+
+
+def save_section(sharepoint, student, filename, data, allowed, key, body):
+    st.markdown("#### 5. Save to SharePoint")
+    if sharepoint is None:
+        st.caption("Add [sharepoint] hostname and site_path to secrets.toml to save CVs straight to SharePoint.")
+        return
+    with st.expander("SharePoint connection"):
+        st.caption(f"Site: {sharepoint.site_url} · folder: {sharepoint.folder}")
+        if st.button("Test SharePoint connection", key="sp_test"):
+            try:
+                st.success(f"Connected to {sharepoint.check()}.")
+            except SharePointError as e:
+                st.error(str(e))
+    intake = st.text_input("Intake folder", current_intake(), key="sp_intake")
+    intake = safe_name(intake)
+    cache = st.session_state.setdefault("sp_folders", {})
+    if intake not in cache or st.button("Refresh folder list", key="sp_refresh"):
+        try:
+            cache[intake] = sharepoint.list_folders(sharepoint.folder, intake)
+        except SharePointError as e:
+            st.error(str(e))
+            return
+    exact, alike = folder_choices(student, cache[intake])
+    new_folder = safe_name(student)
+    options = exact + alike + ([] if new_folder in exact else [f"New folder: {new_folder}"])
+    if alike:
+        st.warning("Some existing folders look like this student's name. Pick the right one.")
+    choice = st.radio(f"Save into {sharepoint.folder} / {intake} /", options, key=f"{key}-folder",
+                      index=0 if exact and not alike else None)
+    if choice is None:
+        st.caption("Choose a folder to enable saving.")
+        return
+    folder = choice.removeprefix("New folder: ")
+    saved = st.session_state.setdefault("sp_saved", {})
+    if st.button(f"☁️ Save {filename} to SharePoint", type="primary", disabled=not allowed, key=f"{key}-save"):
+        with st.spinner("Saving to SharePoint..."):
+            try:
+                link = sharepoint.upload(data, safe_name(filename), sharepoint.folder, intake, folder)
+            except SharePointError as e:
+                st.error(str(e))
+                return
+        saved[key] = (link, folder, intake)
+        cache.pop(intake, None)
+        st.session_state.setdefault("made_cvs", {})[key] = {"text": body, "name": student}
+    if key in saved:
+        link, folder, intake = saved[key]
+        st.success(f"Saved to {sharepoint.folder} / {intake} / {folder}. "
+                   f"If a CV was already there, SharePoint kept it as an earlier version.")
+        st.link_button("Open in SharePoint", link)
