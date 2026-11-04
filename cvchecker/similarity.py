@@ -1,19 +1,15 @@
 import itertools
-import re
-import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-WORD = re.compile(r"[a-z0-9]+(?:['’][a-z]+)?")
+from cvchecker.prepare import TOKEN, Prepared, normalize, prepare
 
 
 def tokenize(text: str) -> list[str]:
-    text = unicodedata.normalize("NFKD", text)
-    text = "".join(c for c in text if not unicodedata.combining(c)).lower()
-    return WORD.findall(text)
+    return [normalize(m.group()) for m in TOKEN.finditer(text)]
 
 
 def shingles(tokens: list[str], k: int) -> dict[tuple, list[int]]:
@@ -29,6 +25,10 @@ class Passage:
     b_start: int
     length: int
     text: str
+    text_a: str = ""
+    text_b: str = ""
+    section_a: str = ""
+    section_b: str = ""
 
 
 @dataclass
@@ -53,6 +53,16 @@ class PairResult:
         return self.similarity >= similarity_threshold or self.copied >= copied_threshold
 
 
+@dataclass
+class Analysis:
+    docs: list[Prepared]
+    keeps: list[list[bool]]
+    matrix: list
+    pairs: list[PairResult]
+    boilerplate: int
+    k: int
+
+
 def boilerplate_shingles(token_lists, k, template_token_lists=(), share=0.5, min_docs=3):
     """Shingles shared by most of the batch, or present in a template, are not evidence of copying."""
     common = set()
@@ -75,24 +85,17 @@ def _mask(tokens, k, banned):
     return keep
 
 
-def matching_passages(ta, tb, k, banned=frozenset()) -> list[Passage]:
+def matching_passages(ta, tb, k, banned=frozenset(), index_b=None) -> list[Passage]:
     """All shared runs of at least k words, wherever they appear in either document."""
-    index_b = shingles(tb, k)
+    index_b = index_b if index_b is not None else shingles(tb, k)
     runs = {}
     for i in range(len(ta) - k + 1):
         sh = tuple(ta[i:i + k])
         if sh in banned:
             continue
         for j in index_b.get(sh, ()):
-            if (i - 1, j - 1) in runs:
-                start = runs.pop((i - 1, j - 1))
-                runs[(i, j)] = start
-            else:
-                runs[(i, j)] = (i, j)
-    found = []
-    for (end_i, _), (si, sj) in runs.items():
-        found.append((si, sj, end_i - si + k))
-    found.sort(key=lambda r: -r[2])
+            runs[(i, j)] = runs.pop((i - 1, j - 1), (i, j))
+    found = sorted(((si, sj, end_i - si + k) for (end_i, _), (si, sj) in runs.items()), key=lambda r: -r[2])
     taken_a, taken_b, passages = set(), set(), []
     for si, sj, length in found:
         # Adjacent passages can share a word at their edges; trim it rather than drop the passage.
@@ -110,7 +113,7 @@ def matching_passages(ta, tb, k, banned=frozenset()) -> list[Passage]:
     return passages
 
 
-def _copied_share(tokens, keep, passages, side):
+def _copied_share(keep, passages, side):
     countable = sum(keep)
     if not countable:
         return 0.0
@@ -121,30 +124,39 @@ def _copied_share(tokens, keep, passages, side):
     return sum(1 for i in covered if keep[i]) / countable
 
 
-def analyse(texts, min_words=10, template_texts=()):
-    tokens = [tokenize(t) for t in texts]
+def _main_section(doc, start, length):
+    return Counter(doc.sections[start:start + length]).most_common(1)[0][0]
+
+
+def analyse(texts, min_words=10, template_texts=(), phrases=()) -> Analysis:
+    docs = [prepare(t, phrases) for t in texts]
+    tokens = [d.tokens for d in docs]
     k = max(3, min_words)
-    banned = boilerplate_shingles(tokens, k, [tokenize(t) for t in template_texts])
+    banned = boilerplate_shingles(tokens, k, [prepare(t, phrases).tokens for t in template_texts])
     keeps = [_mask(t, k, banned) for t in tokens]
     cleaned = [" ".join(w for w, keep in zip(t, m) if keep) for t, m in zip(tokens, keeps)]
 
+    matrix = [[0.0] * len(texts) for _ in texts]
     if any(cleaned) and len(texts) >= 2:
-        vectorizer = TfidfVectorizer(stop_words="english")
         try:
-            matrix = cosine_similarity(vectorizer.fit_transform(cleaned))
+            matrix = cosine_similarity(TfidfVectorizer(stop_words="english").fit_transform(cleaned))
         except ValueError:
-            matrix = [[0.0] * len(texts) for _ in texts]
-    else:
-        matrix = [[0.0] * len(texts) for _ in texts]
+            pass
 
+    indexes = [shingles(t, k) for t in tokens]
     pairs = []
     for a, b in itertools.combinations(range(len(texts)), 2):
-        passages = matching_passages(tokens[a], tokens[b], k, banned)
+        passages = matching_passages(tokens[a], tokens[b], k, banned, indexes[b])
+        for p in passages:
+            p.text_a = docs[a].excerpt(p.a_start, p.length)
+            p.text_b = docs[b].excerpt(p.b_start, p.length)
+            p.section_a = _main_section(docs[a], p.a_start, p.length)
+            p.section_b = _main_section(docs[b], p.b_start, p.length)
         pairs.append(PairResult(
             a, b,
             similarity=float(matrix[a][b]),
-            copied_a_in_b=_copied_share(tokens[a], keeps[a], passages, "a"),
-            copied_b_in_a=_copied_share(tokens[b], keeps[b], passages, "b"),
+            copied_a_in_b=_copied_share(keeps[a], passages, "a"),
+            copied_b_in_a=_copied_share(keeps[b], passages, "b"),
             passages=passages,
         ))
-    return matrix, pairs, len(banned)
+    return Analysis(docs, keeps, matrix, pairs, len(banned), k)

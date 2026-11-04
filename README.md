@@ -13,7 +13,10 @@ Upload two or more PDF or Word documents and the tool will:
 - **Score every pair two ways.** *Similarity* is cosine similarity over TF-IDF vectors, so it reflects distinctive vocabulary. *Copied text* is the share of one document that appears word for word in the other, so "62% of Doc #4 is found in Doc #9" reads as exactly what it is.
 - **Flag pairs** at or above either threshold you set (defaults: 80% similarity, 25% copied text)
 - **Show every matching passage**, wherever it sits in each document, so a student who reorders sections is still caught
-- **Ignore template text.** Wording shared by most of a batch, or found in an uploaded blank template, isn't counted as copying
+- **Ignore what isn't evidence.** Contact details (emails, phone numbers, web links, postcodes), dates, section headings, stock CV phrases (`cvchecker/common_phrases.txt`, plus extra phrases per check) and wording shared by most of a batch or found in an uploaded blank template are all left out
+- **Triage the batch.** Every CV gets a status (🔴 Needs review, 🟠 Check, 🟢 Original), its share of original wording, its main match, and which CV sections are affected, worst first
+- **Spot copying groups**, such as one personal statement shared by three or more applicants
+- **Feedback sheets.** A Word document per flagged student listing, by section, the sentences to rewrite. It never names the other applicant
 - **Report problem files by name.** Scanned PDFs with no text, unreadable files and identical uploads each get a warning instead of silently dropping out
 - **Identify hotspots**, which surfaces the one document copied from repeatedly
 - **Plot a similarity matrix**, a heatmap of every document against every other
@@ -52,6 +55,12 @@ Then open the address Streamlit prints (usually `http://localhost:8501`).
 4. Click **Analyze Documents**
 
 The 20 MB limit is set in `.streamlit/config.toml`. If the app sits behind nginx, nginx needs `client_max_body_size 20M;` too, or larger uploads are rejected before they reach the app.
+
+## Microsoft sign-in
+
+When `.streamlit/secrets.toml` has an `[auth]` section, only signed-in Microsoft users can use the app; without it the app runs open, for local use. Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` on the server, fill in the values from the Entra ID app registration, and run `chmod 600` on it. The real file is in `.gitignore`.
+
+In Entra ID, the app needs a **Web** redirect URI of `https://<the app's address>/oauth2callback`, and turning on **Assignment required** (Enterprise applications > the app > Properties) limits sign-in to the users or group assigned to it.
 
 ## Running the tests
 

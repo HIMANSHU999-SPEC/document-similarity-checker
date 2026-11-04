@@ -2,12 +2,15 @@
 
 altair==5.5.0
 attrs==25.3.0
+Authlib==1.9.4
 blinker==1.9.0
 cachetools==6.1.0
 certifi==2025.8.3
+cffi==2.1.1
 charset-normalizer==3.4.3
 click==8.2.1
 colorama==0.4.6
+cryptography==50.0.2
 et_xmlfile==2.0.0
 gitdb==4.0.12
 GitPython==3.1.45
@@ -27,6 +30,7 @@ pillow==11.3.0
 plotly==6.2.0
 protobuf==6.31.1
 pyarrow==21.0.0
+pycparser==3.12
 pydeck==0.9.1
 PyMuPDF==1.26.3
 python-dateutil==2.9.0.post0
