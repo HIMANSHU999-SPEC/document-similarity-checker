@@ -67,6 +67,17 @@ In Entra ID, the app needs a **Web** redirect URI of `https://<the app's address
 
 Add the API key to `.streamlit/secrets.toml` under `[anthropic]` (see `secrets.toml.example`). Without it the Claude buttons are hidden and everything else works as normal. Each CV review costs about $0.01 to $0.02; set a monthly spending cap in the Anthropic Console.
 
+## Transcript to CV
+
+The **Transcript to CV** page (top of the app) turns one student's part of a Teams interview recording into a CV draft. It needs the Claude API key.
+
+1. Upload the transcript as downloaded from Teams (.vtt or .docx).
+2. Pick the interviewer: their questions are passed to Claude as context only, and nothing they say goes into the CV. Enter the student's name and the start and end time of their part, or fill the times from a speaker in the list. Anyone else speaking in that window, including a shared room account, is treated as the student.
+3. Emails and phone numbers are swapped for placeholders before Claude reads the transcript, and put back afterwards.
+4. Claude returns a draft in which every line is traced back to what the student said, plus questions to ask where information is missing.
+5. The name check compares the name you entered with the name the student gives in the recording. A mismatch blocks the download unless you give a reason, which is saved in the Word file's notes.
+6. The draft is checked for originality against the last CV check and other CVs made in the same session, then downloaded as `<Name> CV.docx`. Upload the LAAT template with a `{{CV}}` paragraph to have the CV placed inside it.
+
 ## Running the tests
 
 ```bash

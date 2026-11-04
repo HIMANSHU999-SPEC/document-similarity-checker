@@ -13,7 +13,6 @@ html, body, .stApp, .stMarkdown, button, input, textarea { font-family: 'Inter',
 code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .stAppDeployButton, #MainMenu, footer, [data-testid="stDecoration"] { display: none !important; }
 .stTabs [data-baseweb="tab-highlight"] { background-color: var(--cvc-accent); }
-[data-testid="stHeader"] { background: transparent; }
 .block-container { padding-top: 1.6rem; padding-bottom: 3rem; max-width: 1320px; }
 h1, h2, h3, h4 { font-weight: 650; letter-spacing: -0.015em; }
 

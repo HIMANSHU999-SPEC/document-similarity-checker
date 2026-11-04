@@ -118,7 +118,7 @@ def make_client(api_key: str):
     return anthropic.Anthropic(api_key=api_key, max_retries=3)
 
 
-def _ask(client, system, payload, schema, effort, max_tokens=16000):
+def ask(client, system, payload, schema, effort, max_tokens=16000):
     try:
         response = client.beta.messages.create(
             model=MODEL,
@@ -139,7 +139,7 @@ def _ask(client, system, payload, schema, effort, max_tokens=16000):
         raise AIError("Couldn't reach Claude. Check the server's internet connection.") from e
 
     if response.stop_reason == "refusal":
-        raise AIError("Claude declined to review this CV. Review it manually.")
+        raise AIError("Claude declined this request. Please handle this one manually.")
     if response.stop_reason == "max_tokens":
         raise AIError("Claude's answer was cut off. Try again.")
     text = next((b.text for b in response.content if b.type == "text"), "")
@@ -182,7 +182,7 @@ def review_cv(client, summary, analysis) -> Review:
         "copied_words_by_section": dict(summary.sections),
         "matched_passages": items,
     }
-    data, usage = _ask(client, REVIEW_SYSTEM, payload, REVIEW_SCHEMA, effort="low")
+    data, usage = ask(client, REVIEW_SYSTEM, payload, REVIEW_SCHEMA, effort="low")
     verdicts = {m["id"]: (m["verdict"], m["reason"]) for m in data["matches"]}
     return Review(data["overall"], data["staff_note"], verdicts, data["sections"], items, usage)
 
@@ -217,5 +217,5 @@ def summarise_check(client, ids, summaries, groups, reviews):
         } for s in summaries if s.status != "Original"],
         "copying_groups": [{"doc_ids": [ids[i] for i in g.docs], "section": g.section} for g in groups],
     }
-    data, usage = _ask(client, SUMMARY_SYSTEM, payload, SUMMARY_SCHEMA, effort="low", max_tokens=4000)
+    data, usage = ask(client, SUMMARY_SYSTEM, payload, SUMMARY_SCHEMA, effort="low", max_tokens=4000)
     return data, usage
