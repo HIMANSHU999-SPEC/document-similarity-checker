@@ -251,3 +251,30 @@ def test_another_students_cv_is_not_used_without_confirmation():
     at.checkbox[0].check().run()
     text, index, _ = at.session_state.out
     assert text.startswith("Bilal Ahmed") and index == 0
+
+
+def test_confirmation_is_for_one_student_only():
+    from streamlit.testing.v1 import AppTest
+
+    def page():
+        import streamlit as st
+        from cvchecker.transcript_ui import existing_cv_section
+        st.session_state.results = {"names": ["Bilal Ahmed CV.pdf"], "texts": ["Bilal Ahmed\nProfile\nI fix laptops."]}
+        st.session_state.out = existing_cv_section(st.text_input("Student", "Aisha Khan"))
+
+    at = AppTest.from_function(page).run()
+    at.radio[0].set_value("Use a CV from the last check").run()
+    at.selectbox[0].set_value("Bilal Ahmed CV.pdf").run()
+    at.checkbox[0].check().run()
+    assert at.session_state.out[0].startswith("Bilal Ahmed")
+    at.text_input[0].set_value("Chen Li").run()
+    assert not at.exception
+    assert at.session_state.out == ("", None, "new")
+    assert at.checkbox[0].value is False
+
+
+def test_uploaded_cv_found_in_the_last_check_is_left_out_of_originality():
+    from cvchecker.transcript_ui import same_cv_in_batch
+    texts = ["Bilal Ahmed\n...", "Aisha Khan\nProfile\nI like IT."]
+    assert same_cv_in_batch("Aisha Khan\nProfile\nI like IT.", texts) == 1
+    assert same_cv_in_batch("Someone else", texts) is None
