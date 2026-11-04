@@ -17,7 +17,7 @@ AUTH = {
 def test_app_starts_without_login_configured():
     at = AppTest.from_file(APP).run(timeout=30)
     assert not at.exception
-    assert "Document Similarity Checker" in at.title[0].value
+    assert any("Document Similarity Checker" in m.value for m in at.markdown)
 
 
 def test_analyze_without_files_warns():

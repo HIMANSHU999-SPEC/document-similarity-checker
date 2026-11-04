@@ -35,6 +35,7 @@ PERSONAL = re.compile("|".join([
 ]), re.IGNORECASE)
 
 TOKEN = re.compile(r"[^\W_]+(?:['’][^\W_]+)?")
+_WORDS = re.compile(r"[^\W_]+")
 DEFAULT_PHRASES_FILE = Path(__file__).with_name("common_phrases.txt")
 
 
@@ -51,7 +52,15 @@ class Prepared:
     sections: list[str] = field(default_factory=list)
 
     def excerpt(self, start: int, length: int) -> str:
-        return " ".join(self.text[self.spans[start][0]:self.spans[start + length - 1][1]].split())
+        parts = []
+        for i in range(start, start + length):
+            a, b = self.spans[i]
+            if i > start:
+                gap = self.text[self.spans[i - 1][1]:a]
+                # A line break between two counted words may hide a skipped heading; keep only its punctuation.
+                parts.append(_WORDS.sub(" ", gap) if "\n" in gap else gap)
+            parts.append(self.text[a:b])
+        return " ".join("".join(parts).split())
 
 
 def load_phrases(path=DEFAULT_PHRASES_FILE, extra: str = "") -> list[list[str]]:

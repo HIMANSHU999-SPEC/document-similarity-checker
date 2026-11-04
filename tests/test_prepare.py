@@ -39,3 +39,8 @@ def test_extra_phrases_from_staff():
 def test_excerpt_keeps_original_case_and_punctuation():
     doc = prepare("I led   a team of Five Engineers, ahead of schedule.")
     assert doc.excerpt(0, 6) == "I led a team of Five"
+
+
+def test_excerpt_leaves_out_skipped_headings():
+    doc = prepare("I love robotics,\nPERSONAL STATEMENT\nand I build drones.")
+    assert doc.excerpt(0, len(doc.tokens)) == "I love robotics, and I build drones"

@@ -1,2 +1,7 @@
+[theme]
+primaryColor = "#1d4ed8"
+baseRadius = "0.6rem"
+showSidebarBorder = true
+
 [server]
 maxUploadSize = 20

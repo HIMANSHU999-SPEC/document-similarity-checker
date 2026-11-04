@@ -1,5 +1,7 @@
 import streamlit as st
 
+from cvchecker.ui import login_card
+
 
 def _secrets_section(name):
     try:
@@ -29,9 +31,10 @@ def require_login():
     if not login_configured():
         return None
     if not st.user.get("is_logged_in"):
-        st.title("📄 Document Similarity Checker")
-        st.write("London Academy for Applied Technology staff only. Sign in with your LAAT Microsoft account.")
-        st.button("Sign in with Microsoft", type="primary", on_click=st.login)
+        login_card("Document Similarity Checker",
+                   "London Academy for Applied Technology staff only. Sign in with your LAAT Microsoft account.")
+        _, middle, _ = st.columns([1, 1, 1])
+        middle.button("Sign in with Microsoft", type="primary", on_click=st.login, use_container_width=True)
         st.stop()
     email = str(st.user.get("email") or st.user.get("preferred_username") or "")
     name = str(st.user.get("name") or email)
