@@ -110,3 +110,30 @@ def test_passage_section_is_where_most_of_it_sits():
     p = analyse([a, b], min_words=8).pairs[0].passages[0]
     assert p.text_a.startswith("London")
     assert (p.section_a, p.section_b) == ("Profile", "Profile")
+
+
+def test_template_tail_plus_one_shared_word_is_not_a_match():
+    import random
+    rng = random.Random(5)
+    vocab = [f"w{i}" for i in range(4000)]
+    template = " ".join(rng.choices(vocab, k=40))
+    docs = [f"{template} {first} " + " ".join(rng.choices(vocab, k=80)) for first in ["shared"] * 2 + ["x", "y", "z"]]
+    pairs = analyse(docs, min_words=10).pairs
+    assert all(p.passages == [] for p in pairs)
+
+
+def test_large_batch_finds_exactly_the_planted_copies():
+    import random
+    import time
+    rng = random.Random(9)
+    vocab = [f"w{i}" for i in range(6000)]
+    template = "Profile\n" + " ".join(rng.choices(vocab, k=60))
+    docs = [f"Person {i}\n{template}\nWork Experience\n" + " ".join(rng.choices(vocab, k=300)) for i in range(400)]
+    planted = {(3, 7), (10, 399), (50, 51)}
+    for a, b in planted:
+        docs[b] += " " + docs[a][-700:]
+    start = time.time()
+    result = analyse(docs, min_words=10)
+    assert time.time() - start < 60
+    found = {(p.a, p.b) for p in result.pairs if p.passages}
+    assert found == planted

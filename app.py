@@ -17,6 +17,9 @@ from cvchecker.ai import (
 )
 from cvchecker.auth import require_login
 from cvchecker.extract import extract
+from cvchecker.limits import (
+    MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB, MAX_FILES, MAX_TOTAL_MB, upload_problem,
+)
 from cvchecker.feedback import feedback_docx, feedback_zip
 from cvchecker.fix_table import fix_rows
 from cvchecker.phrases_store import PhraseStore, StoreError, phrase_key, validate_suggestions
@@ -28,9 +31,7 @@ from cvchecker.special import settings as special_settings
 from cvchecker.triage import AMBER, GREEN, RED, copying_groups, summarise
 from cvchecker.ui import hero, inject_css, pill, quote, steps
 
-MAX_FILE_SIZE_MB = 20
-MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
-MAX_FILES = 100
+MATRIX_MAX_CVS = 100
 STATUS_ICON = {RED: "🔴", AMBER: "🟠", GREEN: "🟢"}
 ROW_PILL = {"Rewrite needed": "red", "Needs review": "red", "Small fixes": "amber", "Check": "amber", "OK": "green"}
 
@@ -291,13 +292,17 @@ def details_section(names, ids, analysis, summaries, groups, thresholds, reviews
                          use_container_width=True, hide_index=True)
         else:
             st.caption("No pairs reach either threshold.")
-        fig = px.imshow(
-            analysis.matrix, x=ids, y=ids, color_continuous_scale="Blues",
-            text_auto=".2f" if len(names) <= 30 else False, labels=dict(color="Similarity"),
-        )
-        fig.update_xaxes(side="top")
-        fig.update_layout(margin=dict(l=0, r=0, t=30, b=0), title_text="Similarity matrix", title_x=0)
-        st.plotly_chart(fig, use_container_width=True)
+        if len(names) <= MATRIX_MAX_CVS:
+            fig = px.imshow(
+                analysis.matrix, x=ids, y=ids, color_continuous_scale="Blues",
+                text_auto=".2f" if len(names) <= 30 else False, labels=dict(color="Similarity"),
+            )
+            fig.update_xaxes(side="top")
+            fig.update_layout(margin=dict(l=0, r=0, t=30, b=0), title_text="Similarity matrix", title_x=0)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.caption(f"The similarity matrix is shown for up to {MATRIX_MAX_CVS} CVs. For this check, "
+                       "use the pairs above and the Excel workbook.")
 
         common = (names, ids, analysis, summaries, thresholds, results["problems"], results["duplicates"])
         d1, d2 = st.columns(2)
@@ -324,7 +329,7 @@ def check_page():
     with st.sidebar:
         st.markdown("### Check CVs")
         uploaded_files = st.file_uploader(
-            f"PDF or Word, up to {MAX_FILE_SIZE_MB} MB each, {MAX_FILES} files",
+            f"PDF or Word, up to {MAX_FILES} files ({MAX_FILE_SIZE_MB} MB each, {MAX_TOTAL_MB} MB in total)",
             type=["pdf", "docx"], accept_multiple_files=True,
         )
         with st.expander("Ignore common wording"):
@@ -355,14 +360,15 @@ def check_page():
             if not uploaded_files or len(uploaded_files) < 2:
                 st.warning("Please upload at least two documents.")
                 st.session_state.results = None
-            elif len(uploaded_files) > MAX_FILES:
-                st.error(f"{len(uploaded_files)} files uploaded. The limit is {MAX_FILES} per check.")
+            elif upload_problem(uploaded_files):
+                st.error(upload_problem(uploaded_files))
                 st.session_state.results = None
             else:
                 st.session_state.ai_reviews, st.session_state.ai_summary = {}, None
                 st.session_state.fixes = None
                 st.session_state.check_cost = None
-                with st.spinner("Analyzing..."):
+                with st.spinner(f"Analyzing {len(uploaded_files)} CVs"
+                                + (" (this can take a minute or two)..." if len(uploaded_files) > 150 else "...")):
                     st.session_state.results = run_analysis(
                         uploaded_files, template_files, extra_phrases,
                         (similarity_threshold, copied_threshold), min_block_size,

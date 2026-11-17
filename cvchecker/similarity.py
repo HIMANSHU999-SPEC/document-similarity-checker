@@ -128,6 +128,25 @@ def _main_section(doc, start, length):
     return Counter(doc.sections[start:start + length]).most_common(1)[0][0]
 
 
+def _candidate_pairs(indexes, banned) -> set[tuple[int, int]]:
+    """Pairs of documents sharing at least one non-template run of k words. Only these can have passages."""
+    owners = defaultdict(set)
+    for d, index in enumerate(indexes):
+        for sh in index:
+            if sh not in banned:
+                owners[sh].add(d)
+    pairs = set()
+    for docs in owners.values():
+        if len(docs) > 1:
+            pairs.update(itertools.combinations(sorted(docs), 2))
+    return pairs
+
+
+def _own_words(keep, start, length) -> int:
+    """Words in a passage that aren't template or batch-wide boilerplate."""
+    return sum(keep[start:start + length])
+
+
 def analyse(texts, min_words=10, template_texts=(), phrases=()) -> Analysis:
     docs = [prepare(t, phrases) for t in texts]
     tokens = [d.tokens for d in docs]
@@ -144,9 +163,14 @@ def analyse(texts, min_words=10, template_texts=(), phrases=()) -> Analysis:
             pass
 
     indexes = [shingles(t, k) for t in tokens]
+    candidates = _candidate_pairs(indexes, banned)
     pairs = []
     for a, b in itertools.combinations(range(len(texts)), 2):
-        passages = matching_passages(tokens[a], tokens[b], k, banned, indexes[b])
+        passages = []
+        if (a, b) in candidates:
+            passages = [p for p in matching_passages(tokens[a], tokens[b], k, banned, indexes[b])
+                        if _own_words(keeps[a], p.a_start, p.length) >= k
+                        and _own_words(keeps[b], p.b_start, p.length) >= k]
         for p in passages:
             p.text_a = docs[a].excerpt(p.a_start, p.length)
             p.text_b = docs[b].excerpt(p.b_start, p.length)

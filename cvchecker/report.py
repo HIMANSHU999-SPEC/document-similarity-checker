@@ -6,6 +6,7 @@ import fitz
 import pandas as pd
 
 
+ALL_PAIRS_MAX_CVS = 100  # above this (600 CVs is ~180,000 pairs) the Pairs sheet lists only related pairs
 FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
 
 
@@ -51,7 +52,8 @@ def to_excel(names, ids, analysis, summaries, thresholds, problems, duplicates) 
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as xl:
         excel_safe(triage_table(names, ids, summaries)).to_excel(xl, sheet_name="Triage", index=False)
-        excel_safe(pairs_table(names, pairs, thresholds)).to_excel(xl, sheet_name="Pairs", index=False)
+        related = pairs if len(names) <= ALL_PAIRS_MAX_CVS else [p for p in pairs if p.passages or p.flagged(thresholds)]
+        excel_safe(pairs_table(names, related, thresholds)).to_excel(xl, sheet_name="Pairs", index=False)
         passages = [{
             "Document A": names[p.a], "Section in A": s.section_a,
             "Document B": names[p.b], "Section in B": s.section_b,
