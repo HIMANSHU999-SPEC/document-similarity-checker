@@ -52,7 +52,8 @@ def to_excel(names, ids, analysis, summaries, thresholds, problems, duplicates) 
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as xl:
         excel_safe(triage_table(names, ids, summaries)).to_excel(xl, sheet_name="Triage", index=False)
-        related = pairs if len(names) <= ALL_PAIRS_MAX_CVS else [p for p in pairs if p.passages or p.flagged(thresholds)]
+        related = pairs if len(names) <= ALL_PAIRS_MAX_CVS else list(
+            {(p.a, p.b): p for p in [*(p for p in pairs if p.passages), *analysis.flagged_pairs(thresholds)]}.values())
         excel_safe(pairs_table(names, related, thresholds)).to_excel(xl, sheet_name="Pairs", index=False)
         passages = [{
             "Document A": names[p.a], "Section in A": s.section_a,
@@ -83,11 +84,11 @@ def to_pdf(names, ids, analysis, summaries, thresholds, problems, duplicates, gr
     )
     issues = "".join(f"<li>{e(n)}: {e(m)}</li>" for n, m in problems)
     issues += "".join(f"<li>Identical files: {e(' = '.join(g))}</li>" for g in duplicates)
-    flagged = sum(1 for p in analysis.pairs if p.flagged(thresholds))
+    flagged = len(analysis.flagged_pairs(thresholds))
     body = (
         "<h1>CV similarity report</h1>"
         f"<p>{datetime.now():%d %B %Y %H:%M}{' · run by ' + e(run_by) if run_by else ''}<br/>"
-        f"{len(names)} CVs · {len(analysis.pairs)} comparisons · {flagged} flagged pairs "
+        f"{len(names)} CVs · {analysis.comparisons} comparisons · {flagged} flagged pairs "
         f"(similarity at least {thresholds[0]:.0%} or copied text at least {thresholds[1]:.0%})</p>"
         "<h2>CVs to review</h2>"
         + (f"<table><tr><th>Status</th><th>ID</th><th>File</th><th>Original</th><th>Main match</th>"

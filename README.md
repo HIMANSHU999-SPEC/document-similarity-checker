@@ -39,7 +39,7 @@ Upload two or more PDF or Word documents and the tool will:
 
 ## Stack
 
-Python 3.10 to 3.13 · Streamlit · scikit-learn · PyMuPDF · python-docx · pandas · Plotly · openpyxl
+Python 3.10 to 3.13 · Streamlit · NumPy (TF-IDF, cosine similarity) · PyMuPDF · python-docx · pandas · Plotly · openpyxl
 
 ## Running it
 
@@ -146,6 +146,7 @@ pytest
 - Only PDF and DOCX are supported. Anything else is reported and skipped.
 - Scanned PDFs with no text layer can't be read, since the tool reads text and does not OCR. They're named in a warning.
 - Up to 600 CVs per check (about 180,000 pairs). Only pairs that share at least one run of words are compared in detail, so a full 600-CV batch is checked in seconds. The 500 MB total keeps uploads within the server's memory.
+- Memory: a 600-CV check uses about 330 MB for the whole app. Only pairs that share wording are kept for large batches (similarity scores stay in one compact table), CV text is stored compactly, downloads are built once per check, and TF-IDF is computed with NumPy instead of loading scikit-learn (same scores, about 60 MB less).
 - A matching passage must contain at least the minimum passage length of the student's own words, so template wording plus one shared word doesn't count.
 - Above 100 CVs, the similarity matrix isn't drawn and the Excel Pairs sheet lists only pairs that share wording or are flagged.
 

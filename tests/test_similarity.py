@@ -137,3 +137,21 @@ def test_large_batch_finds_exactly_the_planted_copies():
     assert time.time() - start < 60
     found = {(p.a, p.b) for p in result.pairs if p.passages}
     assert found == planted
+
+
+def test_large_batches_store_only_shared_wording_pairs_but_still_flag_by_similarity(monkeypatch):
+    from cvchecker import similarity
+    monkeypatch.setattr(similarity, "ALL_PAIRS_MAX_DOCS", 3)
+    topic = "robotics coding sensors arduino soldering circuits programming microcontrollers".split()
+    docs = [P1 + " " + P2, P2 + " " + P1,
+            "Chen enjoys " + " and ".join(topic) + " at the weekend club.",
+            "Dara likes " + ", ".join(reversed(topic)) + " with friends after school.",
+            "Ezra bakes bread, grows tomatoes and walks the family dog every morning."]
+    result = analyse(docs, min_words=8)
+    assert result.comparisons == 10
+    assert [(p.a, p.b) for p in result.pairs] == [(0, 1)]
+    flagged = {(p.a, p.b) for p in result.flagged_pairs((0.5, 0.25))}
+    assert (0, 1) in flagged and (2, 3) in flagged and (0, 4) not in flagged
+    from cvchecker.triage import summarise
+    statuses = {s.index: s.status for s in summarise(result, (0.5, 0.25))}
+    assert statuses[2] == statuses[3] == "Needs review" and statuses[4] == "Original"
