@@ -1,4 +1,6 @@
 import re
+import sys
+from array import array
 import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -44,11 +46,37 @@ def normalize(word: str) -> str:
     return "".join(c for c in word if not unicodedata.combining(c)).lower()
 
 
+class Spans:
+    """(start, end) character positions of each word, kept as two compact integer arrays."""
+
+    def __init__(self):
+        self.starts, self.ends = array("I"), array("I")
+
+    def append(self, span):
+        self.starts.append(span[0])
+        self.ends.append(span[1])
+
+    def __getitem__(self, i):
+        return self.starts[i], self.ends[i]
+
+    def __len__(self):
+        return len(self.starts)
+
+    def __iter__(self):
+        return zip(self.starts, self.ends)
+
+    def keep(self, flags):
+        kept = Spans()
+        kept.starts = array("I", (v for v, k in zip(self.starts, flags) if k))
+        kept.ends = array("I", (v for v, k in zip(self.ends, flags) if k))
+        return kept
+
+
 @dataclass
 class Prepared:
     text: str
     tokens: list[str] = field(default_factory=list)
-    spans: list[tuple[int, int]] = field(default_factory=list)
+    spans: Spans = field(default_factory=Spans)
     sections: list[str] = field(default_factory=list)
 
     def excerpt(self, start: int, length: int) -> str:
@@ -109,7 +137,7 @@ def prepare(text: str, phrases=()) -> Prepared:
         else:
             start, body = offset, line
         for m in TOKEN.finditer(body):
-            doc.tokens.append(normalize(m.group()))
+            doc.tokens.append(sys.intern(normalize(m.group())))
             doc.spans.append((start + m.start(), start + m.end()))
             doc.sections.append(section)
         offset += len(line)
@@ -133,5 +161,5 @@ def _strip_phrases(doc: Prepared, phrases):
                 break
         i += 1
     doc.tokens = [t for t, k in zip(doc.tokens, keep) if k]
-    doc.spans = [s for s, k in zip(doc.spans, keep) if k]
+    doc.spans = doc.spans.keep(keep)
     doc.sections = [s for s, k in zip(doc.sections, keep) if k]

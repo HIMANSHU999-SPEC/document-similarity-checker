@@ -52,3 +52,23 @@ def test_file_names_that_look_like_formulas_are_written_as_text():
     data = to_excel(names, IDS, a, summarise(a, T), T, [], [])
     for sheet in openpyxl.load_workbook(io.BytesIO(data)).worksheets:
         assert not [c for r in sheet.iter_rows() for c in r if c.data_type == "f"]
+
+
+def test_pairs_sheet_lists_every_pair_for_small_checks_and_related_ones_for_large():
+    import random
+    from cvchecker import report
+    rng = random.Random(3)
+    vocab = [f"w{i}" for i in range(3000)]
+    others = [" ".join(rng.choices(vocab, k=40)) for _ in range(4)]
+    a = analyse([P1 + " " + P2, P2 + " " + P1] + others, min_words=8)
+    names = [f"{c}.pdf" for c in "abcdef"]
+    ids = [f"Doc #{i}" for i in range(1, 7)]
+    small = pd.read_excel(io.BytesIO(to_excel(names, ids, a, summarise(a, T), T, [], [])), sheet_name="Pairs")
+    assert len(small) == len(a.pairs) == 15
+    old = report.ALL_PAIRS_MAX_CVS
+    report.ALL_PAIRS_MAX_CVS = 5
+    try:
+        large = pd.read_excel(io.BytesIO(to_excel(names, ids, a, summarise(a, T), T, [], [])), sheet_name="Pairs")
+    finally:
+        report.ALL_PAIRS_MAX_CVS = old
+    assert len(large) == 1 and set(large.iloc[0][["Document A", "Document B"]]) == {"a.pdf", "b.pdf"}

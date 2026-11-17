@@ -110,3 +110,48 @@ def test_passage_section_is_where_most_of_it_sits():
     p = analyse([a, b], min_words=8).pairs[0].passages[0]
     assert p.text_a.startswith("London")
     assert (p.section_a, p.section_b) == ("Profile", "Profile")
+
+
+def test_template_tail_plus_one_shared_word_is_not_a_match():
+    import random
+    rng = random.Random(5)
+    vocab = [f"w{i}" for i in range(4000)]
+    template = " ".join(rng.choices(vocab, k=40))
+    docs = [f"{template} {first} " + " ".join(rng.choices(vocab, k=80)) for first in ["shared"] * 2 + ["x", "y", "z"]]
+    pairs = analyse(docs, min_words=10).pairs
+    assert all(p.passages == [] for p in pairs)
+
+
+def test_large_batch_finds_exactly_the_planted_copies():
+    import random
+    import time
+    rng = random.Random(9)
+    vocab = [f"w{i}" for i in range(6000)]
+    template = "Profile\n" + " ".join(rng.choices(vocab, k=60))
+    docs = [f"Person {i}\n{template}\nWork Experience\n" + " ".join(rng.choices(vocab, k=300)) for i in range(400)]
+    planted = {(3, 7), (10, 399), (50, 51)}
+    for a, b in planted:
+        docs[b] += " " + docs[a][-700:]
+    start = time.time()
+    result = analyse(docs, min_words=10)
+    assert time.time() - start < 60
+    found = {(p.a, p.b) for p in result.pairs if p.passages}
+    assert found == planted
+
+
+def test_large_batches_store_only_shared_wording_pairs_but_still_flag_by_similarity(monkeypatch):
+    from cvchecker import similarity
+    monkeypatch.setattr(similarity, "ALL_PAIRS_MAX_DOCS", 3)
+    topic = "robotics coding sensors arduino soldering circuits programming microcontrollers".split()
+    docs = [P1 + " " + P2, P2 + " " + P1,
+            "Chen enjoys " + " and ".join(topic) + " at the weekend club.",
+            "Dara likes " + ", ".join(reversed(topic)) + " with friends after school.",
+            "Ezra bakes bread, grows tomatoes and walks the family dog every morning."]
+    result = analyse(docs, min_words=8)
+    assert result.comparisons == 10
+    assert [(p.a, p.b) for p in result.pairs] == [(0, 1)]
+    flagged = {(p.a, p.b) for p in result.flagged_pairs((0.5, 0.25))}
+    assert (0, 1) in flagged and (2, 3) in flagged and (0, 4) not in flagged
+    from cvchecker.triage import summarise
+    statuses = {s.index: s.status for s in summarise(result, (0.5, 0.25))}
+    assert statuses[2] == statuses[3] == "Needs review" and statuses[4] == "Original"

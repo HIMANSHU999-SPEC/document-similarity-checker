@@ -2,9 +2,9 @@ import itertools
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
+from cvchecker.tfidf import cosine_matrix
 from cvchecker.prepare import TOKEN, Prepared, normalize, prepare
 
 
@@ -17,6 +17,9 @@ def shingles(tokens: list[str], k: int) -> dict[tuple, list[int]]:
     for i in range(len(tokens) - k + 1):
         index[tuple(tokens[i:i + k])].append(i)
     return index
+
+
+ALL_PAIRS_MAX_DOCS = 100  # above this, only pairs that share wording are stored; scores stay in the matrix
 
 
 @dataclass
@@ -61,6 +64,22 @@ class Analysis:
     pairs: list[PairResult]
     boilerplate: int
     k: int
+
+    @property
+    def comparisons(self) -> int:
+        n = len(self.docs)
+        return n * (n - 1) // 2
+
+    def flagged_pairs(self, thresholds) -> list[PairResult]:
+        """Every flagged pair, including pairs flagged only by similarity that weren't stored."""
+        flagged = [p for p in self.pairs if p.flagged(thresholds)]
+        if len(self.pairs) < self.comparisons:
+            stored = {(p.a, p.b) for p in self.pairs}
+            upper = np.triu(np.asarray(self.matrix, dtype=np.float32), 1)
+            for a, b in np.argwhere(upper >= thresholds[0]):
+                if (a, b) not in stored:
+                    flagged.append(PairResult(int(a), int(b), float(upper[a, b]), 0.0, 0.0))
+        return flagged
 
 
 def boilerplate_shingles(token_lists, k, template_token_lists=(), share=0.5, min_docs=3):
@@ -128,6 +147,25 @@ def _main_section(doc, start, length):
     return Counter(doc.sections[start:start + length]).most_common(1)[0][0]
 
 
+def _candidate_pairs(indexes, banned) -> set[tuple[int, int]]:
+    """Pairs of documents sharing at least one non-template run of k words. Only these can have passages."""
+    owners = defaultdict(set)
+    for d, index in enumerate(indexes):
+        for sh in index:
+            if sh not in banned:
+                owners[sh].add(d)
+    pairs = set()
+    for docs in owners.values():
+        if len(docs) > 1:
+            pairs.update(itertools.combinations(sorted(docs), 2))
+    return pairs
+
+
+def _own_words(keep, start, length) -> int:
+    """Words in a passage that aren't template or batch-wide boilerplate."""
+    return sum(keep[start:start + length])
+
+
 def analyse(texts, min_words=10, template_texts=(), phrases=()) -> Analysis:
     docs = [prepare(t, phrases) for t in texts]
     tokens = [d.tokens for d in docs]
@@ -139,14 +177,23 @@ def analyse(texts, min_words=10, template_texts=(), phrases=()) -> Analysis:
     matrix = [[0.0] * len(texts) for _ in texts]
     if any(cleaned) and len(texts) >= 2:
         try:
-            matrix = cosine_similarity(TfidfVectorizer(stop_words="english").fit_transform(cleaned))
+            matrix = cosine_matrix(cleaned)
         except ValueError:
             pass
 
     indexes = [shingles(t, k) for t in tokens]
+    candidates = _candidate_pairs(indexes, banned)
+    many = len(texts) > ALL_PAIRS_MAX_DOCS
     pairs = []
     for a, b in itertools.combinations(range(len(texts)), 2):
-        passages = matching_passages(tokens[a], tokens[b], k, banned, indexes[b])
+        passages = []
+        if (a, b) in candidates:
+            passages = [p for p in matching_passages(tokens[a], tokens[b], k, banned, indexes[b])
+                        if _own_words(keeps[a], p.a_start, p.length) >= k
+                        and _own_words(keeps[b], p.b_start, p.length) >= k]
+        similarity = float(matrix[a][b])
+        if not passages and many:
+            continue  # nothing shared: its score is in the matrix, and flagged_pairs() rebuilds it if needed
         for p in passages:
             p.text_a = docs[a].excerpt(p.a_start, p.length)
             p.text_b = docs[b].excerpt(p.b_start, p.length)
@@ -154,7 +201,7 @@ def analyse(texts, min_words=10, template_texts=(), phrases=()) -> Analysis:
             p.section_b = _main_section(docs[b], p.b_start, p.length)
         pairs.append(PairResult(
             a, b,
-            similarity=float(matrix[a][b]),
+            similarity=similarity,
             copied_a_in_b=_copied_share(keeps[a], passages, "a"),
             copied_b_in_a=_copied_share(keeps[b], passages, "b"),
             passages=passages,

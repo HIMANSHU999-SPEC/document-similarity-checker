@@ -34,9 +34,9 @@ def summarise(analysis, thresholds) -> list[CvSummary]:
     best = [(None, 0.0)] * n
     matches = [[] for _ in range(n)]
 
+    for p in analysis.flagged_pairs(thresholds):
+        flagged[p.a] = flagged[p.b] = True
     for p in analysis.pairs:
-        if p.flagged(thresholds):
-            flagged[p.a] = flagged[p.b] = True
         if p.copied_a_in_b > best[p.a][1]:
             best[p.a] = (p.b, p.copied_a_in_b)
         if p.copied_b_in_a > best[p.b][1]:
