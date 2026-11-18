@@ -34,6 +34,13 @@ from cvchecker.ui import hero, inject_css, pill, quote, steps
 
 MATRIX_MAX_CVS = 100
 STATUS_ICON = {RED: "🔴", AMBER: "🟠", GREEN: "🟢"}
+STATUS_MEANING = [
+    ("Rewrite needed", "🔴 Rewrite needed: copied personal wording, send the student their feedback"),
+    ("Needs review", "🔴 Needs review: a lot of shared wording, open the row to judge it"),
+    ("Small fixes", "🟠 Small fixes: a short copied part to reword"),
+    ("Check", "🟠 Check: a short shared passage, open the row to judge it"),
+    ("OK", "✅ OK: nothing to change"),
+]
 ROW_PILL = {"Rewrite needed": "red", "Needs review": "red", "Small fixes": "amber", "Check": "amber", "OK": "green"}
 
 
@@ -149,15 +156,6 @@ st.set_page_config(layout="wide", page_title="Document Similarity Checker | LAAT
 inject_css()
 user = require_login()
 client = claude_client()
-
-for key, default in (("results", None), ("ai_reviews", {}), ("ai_summary", None), ("ai_usage", Usage())):
-    if key not in st.session_state:
-        st.session_state[key] = default
-
-st.set_page_config(layout="wide", page_title="Document Similarity Checker | LAAT", page_icon="📄")
-inject_css()
-user = require_login()
-client = claude_client()
 store = phrase_store()
 sharepoint = sharepoint_client()
 special = special_settings(st.secrets)
@@ -179,14 +177,14 @@ def phrase_action(action, *args):
 
 
 def phrase_sidebar(phrases):
-    with st.expander("Common phrases"):
+    with st.expander("Optional: phrases that are never counted"):
         builtin = builtin_phrases()
         st.caption(f"Built-in ({len(builtin)})")
         with st.container(height=150):
             st.markdown("\n".join(f"- {p}" for p in builtin))
         st.caption(f"Learned ({len(phrases.learned)})")
         if not phrases.learned:
-            st.markdown("<span class='cvc-muted'>None yet. Add Claude's suggestions under the results.</span>",
+            st.markdown("<span class='cvc-muted'>None yet. Claude suggests some under the results.</span>",
                         unsafe_allow_html=True)
         for n, item in enumerate(phrases.learned):
             text, button = st.columns([4, 1.4])
@@ -218,7 +216,7 @@ def suggestions_box(names, analysis, summaries, reviews, phrases):
                           unsafe_allow_html=True)
             if add.button("Add", key=f"add-{key}", use_container_width=True):
                 if phrase_action(store.add, phrase, email):
-                    st.session_state.phrase_msg = ("ok", "Saved. Click Analyze Documents again to apply it to this check.")
+                    st.session_state.phrase_msg = ("ok", "Saved. Click Check CVs again to apply it to this batch.")
                 st.rerun()
             if skip.button("Ignore", key=f"ignore-{key}", use_container_width=True):
                 if phrase_action(store.ignore, phrase, email):
@@ -251,7 +249,7 @@ def detail_panel(row, names, ids, analysis, summaries, reviews):
             except AIError as e:
                 st.warning(str(e))
         action.download_button(
-            "⬇️ Feedback sheet (Word)", feedback_docx(names[s.index], s, review),
+            "⬇️ This student's feedback (Word)", feedback_docx(names[s.index], s, review),
             f"{row.cv} - feedback.docx", use_container_width=True, key=f"sheet-{s.index}",
         )
 
@@ -295,7 +293,7 @@ def detail_panel(row, names, ids, analysis, summaries, reviews):
 
 def details_section(names, ids, analysis, summaries, groups, thresholds, reviews, results):
     flagged = sorted(analysis.flagged_pairs(thresholds), key=lambda p: -p.score)
-    with st.expander("Details"):
+    with st.expander("More details: copying groups, all pairs and full reports"):
         st.markdown(f"**Copying groups ({len(groups)})**")
         if not groups:
             st.caption("No passage is shared by three or more CVs.")
@@ -347,38 +345,39 @@ def details_section(names, ids, analysis, summaries, groups, thresholds, reviews
 def check_page():
     phrases = load_learned(store)
     with st.sidebar:
-        st.markdown("### Check CVs")
+        st.markdown("### 1. Add the CVs")
         uploaded_files = st.file_uploader(
-            f"PDF or Word, up to {MAX_FILES} files ({MAX_FILE_SIZE_MB} MB each, {MAX_TOTAL_MB} MB in total)",
+            f"PDF or Word files: up to {MAX_FILES} ({MAX_FILE_SIZE_MB} MB each, {MAX_TOTAL_MB} MB in total)",
             type=["pdf", "docx"], accept_multiple_files=True,
         )
-        with st.expander("Ignore common wording"):
+        with st.expander("Optional: ignore the CV template"):
             template_files = st.file_uploader(
                 "Blank CV template students use. Its wording is ignored.",
                 type=["pdf", "docx"], accept_multiple_files=True, key="templates",
             )
             extra_phrases = st.text_area(
-                "Extra phrases to ignore, one per line",
+                "Other wording to ignore this time, one phrase per line",
                 help="Added to the built-in and learned phrases, for this check only.",
             )
         phrase_sidebar(phrases)
-        with st.expander("Settings"):
+        with st.expander("Advanced settings"):
             similarity_threshold = st.slider(
-                "Similarity threshold", 0.0, 1.0, 0.80, 0.05,
-                help="Flags a pair whose overall wording is at least this similar.",
+                "Flag two CVs when their overall wording is this similar", 0.0, 1.0, 0.80, 0.05,
+                help="Default 0.80. Lower it to be stricter.",
             )
             copied_threshold = st.slider(
-                "Copied text threshold", 0.0, 1.0, 0.25, 0.05,
-                help="Flags a pair when at least this share of either CV appears word for word in the other.",
+                "Flag a CV when this much of it is copied word for word", 0.0, 1.0, 0.25, 0.05,
+                help="Default 0.25 (a quarter of the CV). Lower it to be stricter.",
             )
             min_block_size = st.number_input(
-                "Minimum matching passage (words)", min_value=3, max_value=50, value=10,
-                help="Shortest run of identical words counted as a matching passage.",
+                "Shortest copied passage that counts (words)", min_value=3, max_value=50, value=10,
+                help="Default 10. Shorter runs of identical words are ignored.",
             )
 
-        if st.button("Analyze Documents", type="primary", use_container_width=True):
+        st.markdown("### 2. Check them")
+        if st.button("Check CVs", type="primary", use_container_width=True):
             if not uploaded_files or len(uploaded_files) < 2:
-                st.warning("Please upload at least two documents.")
+                st.warning("Add at least two CVs first.")
                 st.session_state.results = None
             elif upload_problem(uploaded_files):
                 st.error(upload_problem(uploaded_files))
@@ -389,7 +388,7 @@ def check_page():
                 st.session_state.check_id = st.session_state.get("check_id", 0) + 1
                 st.session_state.downloads = {}
                 st.session_state.check_cost = None
-                with st.spinner(f"Analyzing {len(uploaded_files)} CVs"
+                with st.spinner(f"Checking {len(uploaded_files)} CVs"
                                 + (" (this can take a minute or two)..." if len(uploaded_files) > 150 else "...")):
                     st.session_state.results = run_analysis(
                         uploaded_files, template_files, extra_phrases,
@@ -422,9 +421,9 @@ def check_page():
 
     if not results:
         steps([
-            ("Upload CVs", f"Add up to {MAX_FILES} PDF or Word CVs in the sidebar. Optionally add the blank template."),
-            ("Analyze", "Matching runs on this server, then Claude reviews every flagged CV."),
-            ("Read the table and download feedback sheets", "One row per CV says what to change."),
+            ("Add the CVs", f"In the sidebar, add up to {MAX_FILES} PDF or Word CVs."),
+            ("Check them", "Press Check CVs. Copied wording is found, then Claude explains each problem."),
+            ("Send feedback", "The table says what each student must change. Download the feedback sheets."),
         ])
         return
     if "error" in results:
@@ -460,6 +459,10 @@ def check_page():
         st.caption("Claude isn't turned on, so the table uses the matching results. "
                    "Add your Claude API key under [anthropic] in secrets.toml for plain-English advice.")
 
+    present = {r.status for r in rows}
+    key = [text for status, text in STATUS_MEANING if status in present]
+    st.markdown("#### What each student needs to change")
+    st.caption("  ·  ".join(key))
     table = pd.DataFrame([{"Doc ID": r.doc_id, "CV": r.cv, "Status": f"{r.icon} {r.status}",
                            "What to change": r.what} for r in rows])
     event = st.dataframe(
@@ -476,10 +479,10 @@ def check_page():
     flagged_rows = [r for r in rows if r.status != "OK"]
     d1, d2 = st.columns(2)
     signature = reviews_signature(reviews)
-    d1.download_button("Download table (Excel)", built_once("table", signature, lambda: fix_table_excel(rows)),
+    d1.download_button("⬇️ This table (Excel)", built_once("table", signature, lambda: fix_table_excel(rows)),
                        "what-to-change.xlsx",
                        use_container_width=True)
-    d2.download_button(f"Download all feedback sheets ({len(flagged_rows)}, ZIP)",
+    d2.download_button(f"⬇️ Feedback for all {len(flagged_rows)} students to contact (ZIP)",
                        built_once("zip", signature, lambda: feedback_zip(names, summaries, reviews)), "cv-feedback.zip",
                        use_container_width=True, disabled=not any(s.status != GREEN for s in summaries))
     if st.session_state.check_cost:
@@ -492,7 +495,7 @@ def check_page():
     if selected:
         detail_panel(rows[selected[0]], names, ids, analysis, summaries, reviews)
     else:
-        st.caption("Select a row to see the copied text and the full feedback.")
+        st.info("👆 Click a row in the table to see the copied text, edit Claude's feedback and download it.")
 
     special_ui.fix_section(
         client, results, rows, reviews, email, store.path.parent,

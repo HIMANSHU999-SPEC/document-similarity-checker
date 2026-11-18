@@ -10,15 +10,15 @@ def sidebar_button(config, email, log_dir):
     if not can_use(email, config):
         return
     if st.session_state.get("special_unlocked"):
-        if st.button("🔓 Lock special actions", use_container_width=True):
+        if st.button("🔓 Lock Fix CVs with Claude", use_container_width=True):
             st.session_state.special_unlocked = False
             st.rerun()
         return
-    if st.button("🔒 Special actions", use_container_width=True):
+    if st.button("🔒 Fix CVs with Claude", use_container_width=True, help="For named staff, with the access code."):
         unlock_dialog(config, email, log_dir)
 
 
-@st.dialog("Special actions")
+@st.dialog("Fix CVs with Claude")
 def unlock_dialog(config, email, log_dir):
     if recent_failures(log_dir, email) >= MAX_ATTEMPTS:
         st.error("Too many wrong codes. Try again in an hour.")
@@ -50,9 +50,11 @@ def fix_section(client, results, rows, reviews, email, log_dir, original_report)
         return
     names, ids = results["names"], results["ids"]
     with st.container(border=True):
-        st.markdown("#### 🔒 Special actions: fix copied sections")
-        st.caption("Claude rewrites only the copied passages of each chosen CV, keeping the applicant's facts. "
-                   "Everything else stays as it is. The batch is then re-checked, including fixed CVs against each other.")
+        st.markdown("#### 🔒 Fix CVs with Claude")
+        st.markdown("1. Untick any CV you don't want fixed.  \n"
+                    "2. Press **Fix selected CVs with Claude**. Only the copied wording is rewritten; the facts and "
+                    "everything else stay as they are, and the batch is re-checked.  \n"
+                    "3. Check the before and after for each CV, then **Download fixed CVs**.")
         if client is None:
             st.caption("Add the Claude API key to use this.")
             return
@@ -60,7 +62,8 @@ def fix_section(client, results, rows, reviews, email, log_dir, original_report)
         if not options:
             st.caption("No CV in this check needs fixing.")
             return
-        chosen = st.multiselect("CVs to fix", list(options), default=list(options), key="fix_choice")
+        chosen = st.multiselect("CVs to fix (all CVs with problems are ticked)", list(options),
+                                default=list(options), key="fix_choice")
         st.caption(f"About ${0.04 * len(chosen):.2f} for {len(chosen)} CV{'s' if len(chosen) != 1 else ''}.")
         if st.button("Fix selected CVs with Claude", type="primary", disabled=not chosen):
             bar = st.progress(0.0, text="Claude is rewriting the copied passages...")
