@@ -53,3 +53,18 @@ def test_guide_store_survives_a_damaged_file(tmp_path):
     assert store.load() == set()
     store.mark("a@laat.ac.uk")
     assert store.load() == {"a@laat.ac.uk"}
+
+
+def test_three_versions_of_one_cv_in_a_small_batch_are_found():
+    names = ["Aisha Khan CV.pdf", "Aisha Khan final.pdf", "Aisha Khan updated.docx", "Bilal Ahmed CV.pdf"]
+    texts = [f"{OWN} {P1} {P2}", f"{OWN} {P1} {P2} Final version.", f"{OWN} {P1} {P2} Updated with my new job.", OTHER]
+    found = same_student_twice(names, texts, analyse(texts, min_words=8))
+    assert sorted(d for _, d, _ in found) == [0, 1]
+    assert {k for k, _, _ in found} == {2}
+
+
+def test_two_versions_are_found_even_when_another_student_copied_them():
+    names = ["Aisha Khan CV.pdf", "Aisha Khan CV (2).docx", "Bilal Ahmed CV.pdf", "Chen Li CV.pdf"]
+    texts = [f"{OWN} {P1} {P2}", f"{OWN} {P1} {P2} I also mentor younger students.", f"{OWN} {P1} {P2}", THIRD]
+    found = same_student_twice(names, texts, analyse(texts, min_words=8))
+    assert [(k, d) for k, d, _ in found] == [(1, 0)]
