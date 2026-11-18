@@ -22,9 +22,9 @@ def test_app_starts_without_login_configured():
 
 def test_analyze_without_files_warns():
     at = AppTest.from_file(APP).run(timeout=30)
-    next(b for b in at.button if b.label == "Analyze Documents").click().run(timeout=30)
+    next(b for b in at.button if b.label == "Check CVs").click().run(timeout=30)
     assert not at.exception
-    assert any("at least two documents" in w.value for w in at.warning)
+    assert any("at least two CVs" in w.value for w in at.warning)
 
 
 def test_signed_out_user_only_sees_sign_in():
@@ -33,7 +33,7 @@ def test_signed_out_user_only_sees_sign_in():
     at.run(timeout=30)
     assert not at.exception
     assert [b.label for b in at.button] == ["Sign in with Microsoft"]
-    assert not any(b.label == "Analyze Documents" for b in at.button)
+    assert not any(b.label == "Check CVs" for b in at.button)
 
 
 def test_email_domain_check():

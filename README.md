@@ -53,7 +53,7 @@ Then open the address Streamlit prints (usually `http://localhost:8501`).
 1. Upload two or more PDF or DOCX files in the sidebar (up to 600 files per check, 20 MB each and 500 MB in total)
 2. Optionally upload the blank CV template under **CV template**
 3. Set the thresholds and minimum passage length
-4. Click **Analyze Documents**
+4. Click **Check CVs**
 
 The 20 MB limit is set in `.streamlit/config.toml`. If the app sits behind nginx, nginx needs `client_max_body_size 20M;` too, or larger uploads are rejected before they reach the app.
 
@@ -65,7 +65,7 @@ In Entra ID, the app needs a **Web** redirect URI of `https://<the app's address
 
 ## Results table and learned phrases
 
-After **Analyze Documents**, Claude reviews every flagged CV automatically (if the API key is set) and the page shows one table: CV, status (🔴 Rewrite needed, 🟠 Small fixes, ✅ OK) and a one-line "what to change". Select a row for the copied passages, the editable feedback and the Word feedback sheet. Groups, pairs, the similarity matrix, the full Excel and PDF, and the staff-meeting summary are under **Details**. Without Claude, the table uses the matching results instead.
+After **Check CVs**, Claude reviews every flagged CV automatically (if the API key is set) and the page shows one table: CV, status (🔴 Rewrite needed, 🟠 Small fixes, ✅ OK) and a one-line "what to change". Select a row for the copied passages, the editable feedback and the Word feedback sheet. Groups, pairs, the similarity matrix, the full Excel and PDF, and the staff-meeting summary are under **Details**. Without Claude, the table uses the matching results instead.
 
 Claude also suggests generic CV phrases it found in wording it judged standard. Each suggestion is checked first: it must be 3 to 15 words, come from a passage Claude judged template or stock wording, contain no numbers, email addresses or the student's name, and not already be known. Staff press **Add** (every later check ignores it) or **Ignore** (never suggested again). Learned phrases can be removed under **Common phrases** in the sidebar, and they're used by the Transcript to CV originality check too.
 
@@ -89,7 +89,7 @@ The **Transcript to CV** page (top of the app) turns one student's part of a Tea
 
 ## Special actions: fix copied sections
 
-For named staff only. After **Analyze Documents**, **🔒 Special actions** (under the Analyze button) asks for an access code. Once unlocked, a panel lists the CVs with issues (all ticked by default):
+For named staff only. After **Check CVs**, **🔒 Fix CVs with Claude** (under the Check CVs button) asks for an access code. Once unlocked, a panel lists the CVs with issues (all ticked by default):
 
 1. **Fix selected CVs with Claude** rewrites only each CV's copied passages, keeping the applicant's facts. Everything else, including headings, contact details and layout lines, stays as it was. Contact details are never sent to Claude.
 2. The whole batch is re-checked with the fixed CVs swapped in, including fixed CVs against each other. Anything still matching gets one more pass, then shows "Still matches: fix by hand".
