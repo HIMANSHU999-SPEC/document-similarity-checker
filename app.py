@@ -12,7 +12,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from cvchecker import special_ui, transcript_ui
+from cvchecker import guide, special_ui, transcript_ui
 from cvchecker.ai import (
     OVERALL_LABEL, VERDICT_LABEL, AIError, Review, Usage, make_client, review_cv, review_many, summarise_check,
 )
@@ -29,7 +29,7 @@ from cvchecker.sharepoint import from_secrets as sharepoint_from_secrets
 from cvchecker.report import fix_table_excel, pairs_table, sections_text, to_excel, to_pdf
 from cvchecker.similarity import analyse
 from cvchecker.special import settings as special_settings
-from cvchecker.triage import AMBER, GREEN, RED, copying_groups, summarise
+from cvchecker.triage import AMBER, GREEN, RED, copying_groups, same_student_twice, summarise
 from cvchecker.ui import hero, inject_css, pill, quote, steps
 
 MATRIX_MAX_CVS = 100
@@ -69,7 +69,17 @@ def run_analysis(uploaded_files, template_files, extra_phrases, thresholds, min_
 
     phrases = load_phrases(extra=extra_phrases, learned=learned)
     analysis = analyse([d.text for d in docs], min_words, template_texts, phrases)
+    same_student = same_student_twice([d.name for d in docs], [d.text for d in docs], analysis)
+    if same_student:
+        dropped = {d for _, d, _ in same_student}
+        same_student = [(docs[k].name, docs[d].name, share) for k, d, share in same_student]
+        docs = [d for i, d in enumerate(docs) if i not in dropped]
+        if len(docs) < 2:
+            return {"error": "Fewer than two different CVs.", "problems": problems, "duplicates": duplicates,
+                    "same_student": same_student}
+        analysis = analyse([d.text for d in docs], min_words, template_texts, phrases)
     return {
+        "same_student": same_student,
         "names": [d.name for d in docs],
         "texts": [d.text for d in docs],
         "settings": {"min_words": min_words, "template_texts": template_texts, "phrases": phrases},
@@ -160,6 +170,8 @@ store = phrase_store()
 sharepoint = sharepoint_client()
 special = special_settings(st.secrets)
 email = user[1] if user else "local user"
+guide_store = guide.SeenStore(store.path.parent)
+guide.on_sign_in(email, guide_store)
 
 for key, default in (("results", None), ("ai_reviews", {}), ("ai_summary", None), ("ai_usage", Usage()),
                      ("review_pending", False), ("check_cost", None), ("phrase_msg", None)):
@@ -410,14 +422,17 @@ def check_page():
         st.session_state.phrase_msg = None
 
     results = st.session_state.results
-    if results and (results["problems"] or results["duplicates"]):
-        issues = len(results["problems"]) + len(results["duplicates"])
+    if results and (results["problems"] or results["duplicates"] or results.get("same_student")):
+        issues = len(results["problems"]) + len(results["duplicates"]) + len(results.get("same_student") or [])
         with st.expander(f"⚠️ {issues} file{'s' if issues != 1 else ''} need{'' if issues != 1 else 's'} attention",
                          expanded=issues <= 3):
             for name, problem in results["problems"]:
                 st.markdown(f"**{name}** wasn't included: {problem}.")
             for group in results["duplicates"]:
                 st.markdown("Identical files, checked once: " + ", ".join(f"**{n}**" for n in group))
+            for kept, dropped, share in results.get("same_student") or []:
+                st.markdown(f"**{kept}** and **{dropped}** look like the same student's CV uploaded twice "
+                            f"({share:.0%} the same). Only **{kept}**, the fuller one, was checked.")
 
     if not results:
         steps([
@@ -514,6 +529,7 @@ st.navigation(pages, position="top").run()
 
 with st.sidebar:
     st.divider()
+    guide.help_button(email, guide_store)
     if user:
         st.caption(f"Signed in as **{user[0]}**  \n{user[1]}")
         st.button("Sign out", on_click=st.logout, use_container_width=True)

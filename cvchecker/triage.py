@@ -1,7 +1,10 @@
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
+from cvchecker.names import same_student_files
+
 RED, AMBER, GREEN = "Needs review", "Check", "Original"
+SAME_CV_SHARE = 0.6  # two files named for the same student, at least this alike, are one CV uploaded twice
 STATUS_ORDER = {RED: 0, AMBER: 1, GREEN: 2}
 
 
@@ -108,3 +111,18 @@ def copying_groups(analysis, thresholds, min_size=3) -> list[Group]:
             longest = max(passages, key=lambda s: s.length)
             groups.append(Group(sorted(docs), longest.section_a, longest.text_a))
     return sorted(groups, key=lambda g: len(g.docs), reverse=True)
+
+
+def same_student_twice(names, texts, analysis):
+    """Pairs that look like one student's CV uploaded twice (same name in both file names and mostly the
+    same wording), as (kept index, dropped index, share). The fuller version is kept."""
+    found, dropped = [], set()
+    for p in sorted(analysis.pairs, key=lambda p: -p.copied):
+        if p.copied < SAME_CV_SHARE or not same_student_files(names[p.a], names[p.b]):
+            continue
+        if p.a in dropped or p.b in dropped:
+            continue
+        keep, drop = (p.a, p.b) if len(texts[p.a]) >= len(texts[p.b]) else (p.b, p.a)
+        dropped.add(drop)
+        found.append((keep, drop, p.copied))
+    return found

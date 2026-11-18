@@ -18,6 +18,8 @@ Upload two or more PDF or Word documents and the tool will:
 - **Spot copying groups**, such as one personal statement shared by three or more applicants
 - **Feedback sheets.** A Word document per flagged student listing, by section, the sentences to rewrite. It never names the other applicant
 - **Report problem files by name.** Scanned PDFs with no text, unreadable files and identical uploads each get a warning instead of silently dropping out
+- **Spot one student's CV uploaded twice**: two files whose names give the same person's full name (ignoring words like "CV", "final" and numbers) and that share at least 60% of their wording are treated as one CV, and only the fuller one is checked. Two different students with copied text are never merged, because their file names differ
+- **Welcome guide**: a short how-to opens the first time each person signs in ("Got it, don't show this again" is remembered in `guide_seen.json` next to the learned phrases file) and from **❓ How to use** in the sidebar at any time
 - **Identify hotspots**, which surfaces the one document copied from repeatedly
 - **Plot a similarity matrix**, a heatmap of every document against every other
 - **Export a report** as Excel (every pair, every passage) or a PDF summary
