@@ -1,7 +1,9 @@
+import itertools
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
-from cvchecker.names import same_student_files
+from cvchecker.names import file_person
+from cvchecker.similarity import matching_passages
 
 RED, AMBER, GREEN = "Needs review", "Check", "Original"
 SAME_CV_SHARE = 0.6  # two files named for the same student, at least this alike, are one CV uploaded twice
@@ -113,16 +115,50 @@ def copying_groups(analysis, thresholds, min_size=3) -> list[Group]:
     return sorted(groups, key=lambda g: len(g.docs), reverse=True)
 
 
+def _direct_share(ta, tb, k) -> float:
+    """How much of either CV the other contains word for word, without batch-wide filtering."""
+    passages = matching_passages(ta, tb, k)
+    if not passages or not ta or not tb:
+        return 0.0
+    covered = sum(p.length for p in passages)
+    return max(covered / len(ta), covered / len(tb))
+
+
 def same_student_twice(names, texts, analysis):
-    """Pairs that look like one student's CV uploaded twice (same name in both file names and mostly the
-    same wording), as (kept index, dropped index, share). The fuller version is kept."""
-    found, dropped = [], set()
-    for p in sorted(analysis.pairs, key=lambda p: -p.copied):
-        if p.copied < SAME_CV_SHARE or not same_student_files(names[p.a], names[p.b]):
+    """Files that look like one student's CV uploaded more than once: the same person's name in the file names
+    and mostly the same wording. Returns (kept index, dropped index, share); the fullest version is kept.
+
+    Versions are compared directly, not through the batch analysis: there, wording shared by several versions
+    (or copied by another student too) can count as batch-wide boilerplate and hide the match."""
+    by_person = defaultdict(list)
+    for i, name in enumerate(names):
+        person = tuple(file_person(name))
+        if len(person) >= 2:
+            by_person[person].append(i)
+    found = []
+    for members in by_person.values():
+        if len(members) < 2:
             continue
-        if p.a in dropped or p.b in dropped:
-            continue
-        keep, drop = (p.a, p.b) if len(texts[p.a]) >= len(texts[p.b]) else (p.b, p.a)
-        dropped.add(drop)
-        found.append((keep, drop, p.copied))
+        parent = {i: i for i in members}
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        shares = {}
+        for a, b in itertools.combinations(members, 2):
+            share = _direct_share(analysis.docs[a].tokens, analysis.docs[b].tokens, analysis.k)
+            shares[(a, b)] = shares[(b, a)] = share
+            if share >= SAME_CV_SHARE:
+                parent[find(a)] = find(b)
+        clusters = defaultdict(list)
+        for i in members:
+            clusters[find(i)].append(i)
+        for cluster in clusters.values():
+            if len(cluster) < 2:
+                continue
+            keep = max(cluster, key=lambda i: (len(texts[i]), -i))
+            found += [(keep, d, shares[(keep, d)]) for d in sorted(cluster) if d != keep]
     return found
