@@ -60,3 +60,14 @@ def matching_cvs(student: str, file_names, texts) -> list[int]:
 
 def first_line(text: str) -> str:
     return next((line.strip() for line in text.splitlines() if line.strip()), "")
+
+
+def file_person(file_name: str) -> list[str]:
+    """The person's name from a CV's file name, without words like "CV", "final" or numbers."""
+    stem = file_name.rsplit(".", 1)[0]
+    return sorted(w for w in name_parts(stem) if w not in FILE_NAME_NOISE)
+
+
+def same_student_files(name_a: str, name_b: str) -> bool:
+    a, b = file_person(name_a), file_person(name_b)
+    return len(a) >= 2 and a == b
